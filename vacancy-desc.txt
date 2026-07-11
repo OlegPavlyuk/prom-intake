@@ -1,0 +1,52 @@
+Middle Full Stack developer
+ віддалено
+We are looking for a strong Middle Full-Stack Engineer (Node.js) with 3+ years of experience to join our Medplum direction and grow into a project team through a structured onboarding program.
+
+You will start with an internal Medplum-focused bootcamp, followed by a hands-on pet project, and then transition to one of our ongoing healthcare projects, where you will act as a technical consultant and contributor.
+
+Requirements:
+Must have:
+
+3+ years of commercial experience with JavaScript / TypeScript
+3+ years of commercial experience with Node.js
+Experience with at least one modern front-end framework (React, Angular, Vue, etc.)
+Experience with AWS
+Experience with SQL and/or NoSQL databases
+Experience in healthcare domain (FHIR, Medplum, etc.)
+English level: Upper-intermediate
+Nice to have:
+
+Experience with AI tools and spec-driven development
+Experience with IaaS (AWS CDK, Terraform, or alternatives)
+Experience with AI integrations
+Key Responsibilities:
+Complete internal Medplum bootcamp and gain domain expertise in healthcare solutions
+Develop a pet project to apply acquired knowledge in practice
+Implement and maintain scalable web applications
+Participate in discovery phases, estimations, and technical planning
+Perform research and prototyping for new ideas and solutions
+Contribute to pre-sales activities and technical consulting
+Start and support new projects from scratch
+Project
+Customer: Multiple healthcare clients (USA/EU-based startups)
+
+Type: Healthcare / SaaS
+
+Product:
+
+We are working on several healthcare platforms built on top of Medplum — an open-source platform for building healthcare applications using FHIR standards. These solutions focus on patient data management, clinical workflows, and integrations between healthcare systems.
+
+Market: US & EU healthcare market
+
+Stage: Ongoing projects and active growth of Medplum expertise within the company
+
+Work schedule: Full-time working day, the full remote is available.
+
+Onboarding program:
+
+1st month: Structured Medplum bootcamp with mentorship
+2nd month: Development of an internal pet project
+Next steps: Allocation to a commercial project
+Interview stages:
+Call with the recruiter
+Technical interview
