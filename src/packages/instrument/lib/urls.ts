@@ -1,28 +1,22 @@
-// Project-owned canonical URLs and coding systems. Private to the Instrument
-// module (this is the one place FHIR identifiers live). `.example` is an
-// IETF-reserved TLD, signalling these are stable project identifiers, not a
-// routable domain.
+// Canonical URLs and coding systems used by the Instrument module. The project-
+// wide, shared identifiers come from the `terminology` package (one source of
+// truth; P8) and are re-exported here so the module's internals keep importing
+// them from one local hub. The identifiers below are Instrument-specific (the
+// InstrumentConfig `Basic` type + its structured-extension payload, the SDC
+// weight, the answer-option systems) and stay private to this module.
 
-/** Base for every project-owned canonical URL. */
-export const PROJECT_BASE = "https://prom-intake.example/fhir";
+export {
+  PROJECT_BASE,
+  CS_BASIC_TYPE,
+  ID_INSTRUMENT_KEY,
+  LOINC,
+} from "../../terminology/systems.js";
 
-// --- Project-owned CodeSystems (ADR-0003) -----------------------------------
-/** `Task.code` discriminator: `assignment` | `flag`. */
-export const CS_TASK_CODE = `${PROJECT_BASE}/CodeSystem/task-code`;
-/** Flag `businessStatus`: `Open` | `Acknowledged` | `Resolved`. */
-export const CS_FLAG_STATUS = `${PROJECT_BASE}/CodeSystem/flag-status`;
-/** Assignment `businessStatus`: `Pending` | `Completed` | `Expired`. */
-export const CS_ASSIGNMENT_STATUS = `${PROJECT_BASE}/CodeSystem/assignment-status`;
-/** Resolution reason enum (FR-28). */
-export const CS_RESOLUTION_REASON = `${PROJECT_BASE}/CodeSystem/resolution-reason`;
+import { PROJECT_BASE } from "../../terminology/systems.js";
 
 // --- InstrumentConfig carrier (a `Basic` resource) --------------------------
-/** `Basic.code` system marking a resource as an InstrumentConfig. */
-export const CS_BASIC_TYPE = `${PROJECT_BASE}/CodeSystem/basic-type`;
 /** `Basic.code` code for an InstrumentConfig. */
 export const BASIC_TYPE_INSTRUMENT_CONFIG = "instrument-config";
-/** Identifier system carrying an Instrument's stable key, on both the Basic and the Questionnaire. */
-export const ID_INSTRUMENT_KEY = `${PROJECT_BASE}/instrument-key`;
 
 // --- InstrumentConfig extension URLs (structured payload on the Basic) -------
 export const EXT_CONFIG_ROOT = `${PROJECT_BASE}/StructureDefinition/instrument-config`;
@@ -53,4 +47,3 @@ export const EXT_ITEM_WEIGHT =
 /** Answer-option coding system for an Instrument's ordinal options. */
 export const answerOptionSystem = (key: string): string =>
   `${PROJECT_BASE}/CodeSystem/${key}-answer`;
-export const LOINC = "http://loinc.org";
