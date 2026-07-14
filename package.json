@@ -18,6 +18,7 @@
     "test:integration": "vitest run --project integration",
     "check": "npm run typecheck && npm run lint && npm run lint:boundaries && npm run test",
     "medplum:provision": "tsx scripts/provision-medplum.ts",
+    "medplum:seed": "tsx scripts/seed-instruments.ts",
     "prepare": "husky"
   },
   "dependencies": {
