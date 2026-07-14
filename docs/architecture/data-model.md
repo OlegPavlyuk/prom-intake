@@ -49,6 +49,30 @@ erDiagram
   values finalized at feature-spec time).
 - `status`/`businessStatus` mapping table: see [ADR-0003](../adr/0003-task-modeling-conventions.md).
 
+### InstrumentConfig carrier - a project-owned `Basic` ([ADR-0004](../adr/0004-scoring-and-trigger-engine.md))
+
+[ADR-0004](../adr/0004-scoring-and-trigger-engine.md) settles the *two homes* for Instrument
+configuration and delegates the `InstrumentConfig` **schema** here. It is carried as a FHIR **`Basic`**
+resource - FHIR's designated resource for a project-owned concept it does not otherwise model:
+
+- **Identity:** `Basic.identifier` carries the Instrument's stable key (system
+  `.../instrument-key`); the same identifier is on the `Questionnaire`, binding the two homes. The
+  `Questionnaire` is looked up by its canonical `url` (also held in the config).
+- **Type marker:** `Basic.code` is a project coding (`instrument-config`) so InstrumentConfigs are a
+  queryable, explicit type - never inferred from shape.
+- **Payload (structured extensions under one root extension):** the severity bands (code/label/min/
+  max, open-ended top band omits max), the Trigger definitions (a discriminated set - severity-band
+  with a score cutoff, critical-item with a `linkId` + answer-weight threshold + an `acuteRisk` flag),
+  the total/panel LOINC codes, and the **acute-risk item `linkId`** (a simple, prominent field so the
+  patient client can read it directly and keep the Crisis Response config-driven; FR-15).
+- **Scoring weights are *not* here:** per-answer weights live on the `Questionnaire` via SDC
+  `itemWeight` (ADR-0004); the config carries everything FHIR/SDC does not model.
+
+The **Instrument module** ([`module-boundaries.md`](module-boundaries.md)) owns this mapping end to
+end (`loadInstrument` composes the `Basic` + `Questionnaire` into one domain `Instrument`; its seed
+writes both). Nothing else reads the `Basic`. The carrier is a reversible detail behind that seam, so
+it is recorded here rather than as its own ADR.
+
 ### Score Observation shape (v1: total only)
 
 v1 writes **one total-score `Observation`** (LOINC `44261-6`), not per-item or panel Observations.
