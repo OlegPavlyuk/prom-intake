@@ -49,6 +49,25 @@ land in the repo (`.env` is gitignored):
 When these are absent the integration suite **skips loudly** rather than reporting a false green, so
 `npm test` stays green on a box without Medplum while CI runs the real thing.
 
+## Client apps
+
+Settled in [ADR-0010](../adr/0010-frontend-architecture.md). The frontend is two **Vite + React**
+SPAs under `src/apps/`, kept in the **single-package** repo (no npm workspaces in v1):
+
+| App | Path | Build | Auth |
+| --- | ---- | ----- | ---- |
+| Coordinator app | `src/apps/coordinator/` | `vite build` (own `vite.config.ts`) -> static bundle | Medplum built-in (authenticated) |
+| Patient completion page | `src/apps/patient/` | `vite build` (own `vite.config.ts`) -> static bundle | none (account-less, PHI-minimal) |
+
+- **DOM-free backend boundary.** The base [`tsconfig.json`](../../tsconfig.json) stays node-only; a
+  dedicated `src/apps/tsconfig.json` adds the DOM `lib` for apps. A dependency-cruiser rule forbids
+  `src/packages/**` from importing `react`/`react-dom`/`@medplum/react` or anything under
+  `src/apps/**` (and forbids the two apps importing each other), so Bots and domain modules never
+  pull in DOM/React. Enforced by `npm run lint:boundaries` in CI + pre-commit.
+- **Config.** The Coordinator app needs the Patient-app base URL (to assemble Access-link URLs) and
+  the Medplum base URL; both are Vite build/runtime env vars (`VITE_*`), never secrets. Concrete
+  hosting/deploy targets for the two static bundles are _TBD_ (see below).
+
 ## Cloud resources
 
 _TBD - no cloud footprint yet; the local/CI Medplum is containerised. Filled when a hosted Medplum

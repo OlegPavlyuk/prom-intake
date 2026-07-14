@@ -23,3 +23,4 @@ When new code would contradict an existing ADR, surface the conflict explicitly 
 - [ADR-0007](0007-query-time-priority-policy.md) - Worklist priority is a query-time `PriorityPolicy`, not a stored rank (`accepted`).
 - [ADR-0008](0008-integration-tests-against-real-medplum.md) - Integration tests run against a real Medplum, not a mocked FHIR server (`accepted`).
 - [ADR-0009](0009-bots-as-adapters-over-shared-domain-logic.md) - Medplum Bots are thin adapters over shared domain logic (`accepted`).
+- [ADR-0010](0010-frontend-architecture.md) - Frontend architecture: two credential-isolated Vite/React SPAs on Medplum's built-in auth (`accepted`).

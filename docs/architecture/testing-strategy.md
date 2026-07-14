@@ -17,7 +17,14 @@ module seams: [`module-boundaries.md`](module-boundaries.md).
 | ----- | ----- | ---------- |
 | Unit | single deep module via its interface (pure domain logic) | every commit |
 | Integration | modules + **real Medplum** (Subscriptions, Bots, ETags, AccessPolicy) | CI |
+| UI (component) | React components in the client apps, in **jsdom** | every commit |
 | E2E | the tracer-bullet user flow | CI / pre-release |
+
+The vitest runner has **three projects** ([ADR-0010](../adr/0010-frontend-architecture.md)):
+`unit` and `integration` run in the node environment (keeping the domain pyramid DOM-free);
+`ui` runs the client apps' `src/apps/**/*.test.tsx` in jsdom with `@testing-library/react`.
+Browser-**E2E** tooling (Playwright etc.) is **deferred** to the tracer-bullet E2E ticket - it is
+not decided against the one-screen app foundation (#28).
 
 ### Seam assignment
 | Behaviour | Level | Seam |

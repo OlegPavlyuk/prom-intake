@@ -31,7 +31,13 @@ secret authorizing one submission).
   valid single-use token bound to one Assignment - the accepted bearer-secret model
   ([ADR-0005](../adr/0005-access-link-security-model.md)).
 - **`publicWebhook` Bot:** the only unauthenticated entry point; explicitly enabled
-  (`Bot.publicWebhook`) and constrained by a scoped `AccessPolicy`.
+  (`Bot.publicWebhook`) and constrained by a scoped `AccessPolicy`. The
+  [Patient completion page](../../CONTEXT.md) is a **separate, credential-free build**
+  ([ADR-0010](../adr/0010-frontend-architecture.md)) that never holds a coordinator session, so this
+  boundary is enforced at the bundle level, not only by convention.
+- **Coordinator app:** authenticates directly against Medplum's built-in auth and calls the FHIR API
+  under the coordinator's own session/`AccessPolicy` - **no backend-for-frontend** interposes a second
+  trust boundary or a place PHI transits ([ADR-0010](../adr/0010-frontend-architecture.md)).
 
 ## Secrets management
 

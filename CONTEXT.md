@@ -105,6 +105,21 @@ intervention. (The coordinator-facing Flag, by contrast, is raised only when the
 submitted.)
 _Avoid_: intervention, escalation, emergency response.
 
+### Client surfaces
+
+**Coordinator app**:
+The authenticated frontend the Care Coordinator uses to assign Instruments and work the Worklist.
+The only surface behind a login (Medplum built-in auth); it also acts as the delivery layer that
+turns an issued Access link token into the patient-facing URL.
+_Avoid_: dashboard (the dashboard is one screen within it), admin panel, portal.
+
+**Patient completion page**:
+The account-less, PHI-minimal frontend a patient reaches through an Access link to complete one
+Instrument. It renders only the blank Instrument (no patient or clinical data) and submits through
+the `publicWebhook` Bot - a separate surface from the Coordinator app, never holding a coordinator
+session.
+_Avoid_: patient portal, form page, survey page.
+
 ## Relationships
 
 - An **Instrument** defines zero or more **Triggers**.
@@ -114,3 +129,5 @@ _Avoid_: intervention, escalation, emergency response.
 - A **Trigger** evaluates a **Response** and may raise a **Flag**.
 - The **Worklist** is the set of unresolved **Flags** awaiting the **Care Coordinator**.
 - An **Acute-risk trigger** additionally produces a **Crisis Response** shown to the patient.
+- The **Care Coordinator** works in the **Coordinator app**; the patient completes their Instrument
+  in the **Patient completion page**, reached via the **Access link**.
