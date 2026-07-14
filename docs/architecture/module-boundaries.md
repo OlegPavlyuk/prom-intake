@@ -25,6 +25,17 @@ never touch `Task`, `Observation`, or tokens directly.
 - The Access link is delivery only; the durable Assignment lives in the Assignment module
   ([ADR-0001](../adr/0001-assignment-as-fhir-task.md)). Swapping delivery channels never touches the
   domain.
+- **`terminology`** (shared, non-feature package) owns the project-wide FHIR reference data used by
+  more than one module: the project-owned canonical URLs / CodeSystem coordinates (`task-code`,
+  `flag-status`, `assignment-status`, `resolution-reason`, `basic-type`, `instrument-key`) and the
+  `CodeSystem` seed (`seedCodeSystems`). It exists so a shared identifier has one home (P8) rather
+  than being duplicated across the Instrument, Assignment, Access-link, and Worklist modules. It
+  holds no feature logic; module-specific identifiers (an Instrument's config extensions, the
+  Access-link token's extensions) stay private to their own module.
+- **Access link scope today:** `issue` + read-only `validate` are implemented. The single-use
+  `consume`-on-submit burn (atomic with `QuestionnaireResponse` creation, via the `publicWebhook`
+  Bot) lands with the submit ticket; until then no submit path is wired, so the read-only validate
+  carries no single-use exposure.
 
 ## Dependency rules
 

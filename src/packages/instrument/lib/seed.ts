@@ -6,7 +6,6 @@
 
 import type { MedplumClient } from "@medplum/core";
 import type { Instrument } from "../../domain/instrument.js";
-import { CODE_SYSTEMS } from "./code-systems.js";
 import { toBasic } from "./config-codec.js";
 import { toQuestionnaire } from "./questionnaire-codec.js";
 import {
@@ -14,13 +13,6 @@ import {
   CS_BASIC_TYPE,
   ID_INSTRUMENT_KEY,
 } from "./urls.js";
-
-/** Upsert the four project-owned CodeSystems (idempotent by canonical url). */
-export async function seedCodeSystems(medplum: MedplumClient): Promise<void> {
-  for (const cs of CODE_SYSTEMS) {
-    await medplum.upsertResource(cs, { url: cs.url as string });
-  }
-}
 
 /**
  * Upsert one Instrument's `Questionnaire` + config `Basic` (idempotent by
