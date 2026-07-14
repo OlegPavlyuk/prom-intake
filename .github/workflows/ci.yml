@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: typecheck / lint / boundaries / unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run lint:boundaries
+      - run: npm run format:check
+      - run: npm run test:unit
+
+  integration:
+    name: integration (real Medplum)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # ADR-0008: integration points run against a REAL Medplum. CI provisions
+      # its own throwaway test project, so no external secret is stored.
+      - name: Start Medplum test project
+        run: docker compose -f infra/medplum/docker-compose.yml up -d --wait
+      - name: Provision client credentials
+        run: npm run medplum:provision
+      - name: Integration tests
+        run: npm run test:integration
+      - name: Tear down Medplum
+        if: always()
+        run: docker compose -f infra/medplum/docker-compose.yml down -v

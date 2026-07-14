@@ -1,0 +1,41 @@
+{
+  "name": "prom-intake",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PROM Intake platform - Medplum/FHIR foundation (first-code milestone)",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:boundaries": "depcruise src",
+    "format": "prettier --write \"**/*.{ts,cts,mts,tsx,js,cjs,mjs,jsx,json,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,cts,mts,tsx,js,cjs,mjs,jsx,json,yml,yaml}\"",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "check": "npm run typecheck && npm run lint && npm run lint:boundaries && npm run test",
+    "medplum:provision": "tsx scripts/provision-medplum.ts",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "@medplum/core": "^4.0.0",
+    "@medplum/fhirtypes": "^4.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "dependency-cruiser": "^16.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
+  }
+}
