@@ -45,6 +45,12 @@ not from a prior conversation.
 - **Never** use the em dash. Use a plain dash `-`.
 - **Tests** exercise behaviour through a module's seam, not its internals. `/implement` uses TDD at
   the agreed seams.
+- **Packages are deep modules** - import only through a package's entry points (its root files),
+  never its subfolders. See [`src/packages/README.md`](src/packages/README.md) before adding or
+  importing one. Boundaries are enforced by `npm run lint:boundaries`.
+- **Integration tests run against a real Medplum** ([ADR-0008](docs/adr/0008-integration-tests-against-real-medplum.md)).
+  Bring one up with `docker compose -f infra/medplum/docker-compose.yml up -d` then
+  `npm run medplum:provision`. See [`docs/architecture/infrastructure.md`](docs/architecture/infrastructure.md).
 - Do not manually edit auto-generated files (e.g. `skills-lock.json`, any `CHANGELOG.md`).
 
 ## Agent skills

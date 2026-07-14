@@ -1,0 +1,58 @@
+# Local, self-contained Medplum test project for the integration harness
+# (ADR-0008). Brings up Postgres + Redis + the Medplum server. After it is
+# healthy, run `npm run medplum:provision` to mint client credentials and write
+# them to `.env`, then `npm run test:integration`.
+#
+#   docker compose -f infra/medplum/docker-compose.yml up -d
+#   docker compose -f infra/medplum/docker-compose.yml down -v   # tear down
+#
+# This is a dev/CI test project only - never production data.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: medplum
+      POSTGRES_PASSWORD: medplum
+      POSTGRES_DB: medplum
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medplum"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass medplum
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "medplum", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  medplum-server:
+    image: medplum/medplum-server:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["file:/usr/src/medplum/packages/server/medplum.config.json"]
+    volumes:
+      - ./medplum.config.json:/usr/src/medplum/packages/server/medplum.config.json:ro
+    ports:
+      - "8103:8103"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:8103/healthcheck').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
