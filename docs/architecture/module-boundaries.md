@@ -50,6 +50,14 @@ dependency-cruiser via the `/setup-ts-deep-modules` skill (entry-point boundary,
 - The **Access link** depends on **Assignment** (the token binds to an Assignment).
 - No module reads another module's FHIR resources directly; cross-module access is through the
   domain interface only.
+- The **client apps** (`src/apps/`, [ADR-0010](../adr/0010-frontend-architecture.md)) sit at the
+  **top** of the graph: they import module entry points and pass a `MedplumClient` in (the
+  authenticated `useMedplum()` client in the Coordinator app), exactly like any other consumer -
+  the deep-module seam is unchanged. Nothing in `src/packages/**` may depend on `src/apps/**` or on
+  React/DOM; the two apps may not import each other. Enforced by dependency-cruiser.
+- **Delivery layer.** `issueAccessLink` returns a raw token, not a URL; the **Coordinator app**
+  assembles the patient-facing Access link from it. This keeps the Access-link module
+  delivery-agnostic - a future SMS/email/portal channel never touches it.
 
 ### Bots are adapters ([ADR-0009](../adr/0009-bots-as-adapters-over-shared-domain-logic.md))
 

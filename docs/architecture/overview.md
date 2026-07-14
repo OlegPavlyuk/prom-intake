@@ -56,10 +56,34 @@ flowchart TB
 | Async trigger | **Medplum Subscription** on `QuestionnaireResponse` | Documented wiring to invoke a Bot on submit. |
 | Instrument definition | **`Questionnaire`** + SDC `itemWeight` | Standard PROM template; scoring weights carried on the form. |
 | Product config | project-owned **`InstrumentConfig`** | Triggers + severity bands where FHIR/SDC is silent. |
-| Client | web apps (coordinator + patient completion) | Coordinator dashboard; PHI-minimal patient page. |
+| Client | **Vite + React + `@medplum/react`** SPAs | Two credential-isolated bundles (Coordinator app + Patient completion page); `@medplum/react` supplies the auth context and the `Questionnaire` renderer ([ADR-0010](../adr/0010-frontend-architecture.md)). |
 
-_Specific client framework and repo layout are settled at the first-code milestone; they do not
-affect the resource model above._
+_The client framework, repo layout, and Medplum auth integration are settled in
+[ADR-0010](../adr/0010-frontend-architecture.md); they do not affect the resource model above._
+
+## Client architecture
+
+Settled in [ADR-0010](../adr/0010-frontend-architecture.md). Two **credential-isolated** Vite/React
+bundles live under `src/apps/`, both consuming the domain modules through their entry points (the UI
+sits at the top of the dependency graph; nothing in `src/packages/**` depends on the apps):
+
+- **Coordinator app** (`src/apps/coordinator/`) - authenticated. Wrapped in a `@medplum/react`
+  `MedplumProvider`; login via `SignInForm` against Medplum's built-in email/password auth (FR-31); a
+  `ProtectedRoute` gates routes on `medplum.getProfile()`. **Session persistence and logout come from
+  the Medplum client** (it stores/refreshes tokens), so a refresh restores the session and logout is
+  `medplum.signOut()`. It talks to Medplum's FHIR API **directly** under the coordinator's own
+  session and `AccessPolicy` - the authenticated `useMedplum()` client is passed straight into the
+  domain modules (`createAssignment(medplum, ...)`). **No backend-for-frontend.**
+- **Patient completion page** (`src/apps/patient/`) - account-less, PHI-minimal. Wrapped in a
+  `MedplumProvider` holding an **unauthenticated, credential-free** client (needed only to render the
+  blank Instrument via `QuestionnaireForm`); no `SignInForm`, `ProtectedRoute`, or stored session.
+  Its only server interactions are token validation and submit via the `publicWebhook` Bot
+  (ADR-0005), so the only unauthenticated entry point stays the submit Bot (NFR-5).
+
+**Delivery layer.** `issueAccessLink` returns a raw token, not a URL. The Coordinator app assembles
+the patient-facing Access link (`<patient-app-base>/…?token=…`) from it, keeping the Access-link
+module delivery-agnostic (CONTEXT.md: the link is a *delivery mechanism*). The patient-app base URL
+is Coordinator-app configuration (see [`infrastructure.md`](infrastructure.md)).
 
 ## Domain -> FHIR mapping (summary)
 
