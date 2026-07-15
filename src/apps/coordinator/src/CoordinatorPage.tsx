@@ -1,9 +1,10 @@
-import { AppShell, Button, Group, Text, Title } from "@mantine/core";
+import { AppShell, Button, Group, Title } from "@mantine/core";
 import { useMedplum } from "@medplum/react";
+import { AssignScreen } from "./assign/AssignScreen";
 
-// The authenticated coordinator surface. This foundation ticket (#28) ships an
-// empty shell - a header with a sign-out control and a placeholder body. The
-// assign flow and the Worklist land in later slices (#29, #21).
+// The authenticated coordinator surface: a header with a sign-out control and the
+// assign flow (#29). A single authenticated screen today, so no client-side
+// routing yet; it arrives with the Worklist (#21), the second screen.
 export function CoordinatorPage(): JSX.Element {
   const medplum = useMedplum();
 
@@ -23,10 +24,7 @@ export function CoordinatorPage(): JSX.Element {
         </Group>
       </AppShell.Header>
       <AppShell.Main>
-        <Text c="dimmed">
-          You are signed in. Assigning Instruments and the Worklist arrive in
-          the next slices.
-        </Text>
+        <AssignScreen />
       </AppShell.Main>
     </AppShell>
   );
