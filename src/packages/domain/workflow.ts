@@ -36,6 +36,12 @@ export interface ResponseAnswer {
 
 /** One patient's completed answers to one Instrument at one time (CONTEXT.md). */
 export interface Response {
+  /**
+   * Reference of the persisted Response (the `QuestionnaireResponse`). A Response
+   * is scored only after it has been submitted and persisted, so it always has an
+   * identity; the Score Observation records it as `derivedFrom` (data-model).
+   */
+  readonly id: string;
   readonly instrumentKey: InstrumentKey;
   readonly patientId: string;
   readonly answers: readonly ResponseAnswer[];

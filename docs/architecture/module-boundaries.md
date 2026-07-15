@@ -22,6 +22,15 @@ never touch `Task`, `Observation`, or tokens directly.
 - `ObservationEmitter` is an **internal strategy of the Scoring engine**, not a standalone module -
   it translates scoring results into `Observation`s and is the additive seam for future panel/
   item-level Observations.
+- **Scoring engine scope today:** the **pure kernel** landed (#18) as `score(response, instrument)`
+  in the `domain` package - it sums SDC `itemWeight` into a total, evaluates the Triggers, and
+  returns the Score, the Score Observation model(s) (via the `ObservationEmitter`), and the Flag
+  domain object(s) to raise (Open, `authoredOn`, trigger refs). It is instrument-agnostic (PHQ-9 and
+  a synthetic second Instrument drive it via config only; FR-4/NFR-2) and holds **no** FHIR/Bot
+  wiring. The Subscription -> Bot adapter that persists those results idempotently is #19
+  ([ADR-0009](../adr/0009-bots-as-adapters-over-shared-domain-logic.md)); mapping the raised Flag
+  domain object to a Flag `Task` stays the Flag module's concern
+  ([ADR-0002](../adr/0002-flag-as-fhir-task.md)).
 - The Access link is delivery only; the durable Assignment lives in the Assignment module
   ([ADR-0001](../adr/0001-assignment-as-fhir-task.md)). Swapping delivery channels never touches the
   domain.
