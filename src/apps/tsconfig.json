@@ -1,0 +1,21 @@
+{
+  // The client apps are the ONLY code allowed to touch the DOM (ADR-0010).
+  // The base tsconfig stays node-only and excludes `src/apps`; this config adds
+  // the DOM `lib`, React's JSX runtime, and Vite's client types for everything
+  // under `src/apps`. A Bot or domain package that references `document` fails
+  // typecheck against the base config, keeping the backend DOM-free.
+  //
+  // This lives at the `src/apps` level (not inside an individual app) so every
+  // client bundle - the coordinator app today, the patient app (#16) tomorrow -
+  // shares one DOM-aware compiler configuration with no per-app rework.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx"
+  },
+  // Clear the base config's `exclude: ["src/apps"]` (it is inherited via
+  // `extends`); this config is the one that DOES compile the apps.
+  "exclude": [],
+  "include": ["."]
+}

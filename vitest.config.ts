@@ -1,9 +1,13 @@
 import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
 
-// Two test projects share one runner (ADR-0008, testing-strategy.md):
-//  - `unit`        - pure domain logic, off-server, runs on every commit.
+// Three test projects share one runner (ADR-0008, ADR-0010, testing-strategy.md):
+//  - `unit`        - pure domain logic, off-server, node env, runs on every commit.
 //  - `integration` - exercises real Medplum; files are named `*.integration.test.ts`.
-// `vitest run` (npm test) runs both; `--project unit|integration` runs one.
+//  - `ui`          - client-app React components (`src/apps/**/*.test.tsx`) in jsdom.
+// The node projects stay DOM-free (they never match `.tsx`); only `ui` loads jsdom
+// and the React plugin, keeping the domain pyramid off the DOM.
+// `vitest run` (npm test) runs all three; `--project unit|integration|ui` runs one.
 export default defineConfig({
   test: {
     projects: [
@@ -21,6 +25,15 @@ export default defineConfig({
           environment: "node",
           include: ["src/**/*.integration.test.ts"],
           setupFiles: ["src/test-support/setup-integration.ts"],
+        },
+      },
+      {
+        plugins: [react()],
+        test: {
+          name: "ui",
+          environment: "jsdom",
+          include: ["src/apps/**/*.test.tsx"],
+          setupFiles: ["src/test-support/setup-ui.ts"],
         },
       },
     ],

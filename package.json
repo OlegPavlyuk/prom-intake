@@ -8,7 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/apps/tsconfig.json",
     "lint": "eslint .",
     "lint:boundaries": "depcruise src",
     "format": "prettier --write \"**/*.{ts,cts,mts,tsx,js,cjs,mjs,jsx,json,yml,yaml}\"",
@@ -16,27 +16,47 @@
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
+    "test:ui": "vitest run --project ui",
     "check": "npm run typecheck && npm run lint && npm run lint:boundaries && npm run test",
+    "dev:coordinator": "vite --config src/apps/coordinator/vite.config.ts",
+    "build:coordinator": "vite build --config src/apps/coordinator/vite.config.ts",
+    "preview:coordinator": "vite preview --config src/apps/coordinator/vite.config.ts",
     "medplum:provision": "tsx scripts/provision-medplum.ts",
+    "medplum:dev-user": "tsx scripts/register-dev-user.ts",
     "medplum:seed": "tsx scripts/seed-instruments.ts",
     "prepare": "husky"
   },
   "dependencies": {
+    "@mantine/core": "^7.17.8",
+    "@mantine/hooks": "^7.17.8",
+    "@mantine/notifications": "^7.17.8",
     "@medplum/core": "^4.0.0",
-    "@medplum/fhirtypes": "^4.0.0"
+    "@medplum/fhirtypes": "^4.0.0",
+    "@medplum/react": "^4.5.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@medplum/mock": "^4.5.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22.0.0",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
     "dependency-cruiser": "^16.0.0",
     "eslint": "^9.0.0",
     "globals": "^15.0.0",
     "husky": "^9.0.0",
+    "jsdom": "^25.0.1",
     "lint-staged": "^15.0.0",
     "prettier": "^3.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.5.0",
     "typescript-eslint": "^8.0.0",
+    "vite": "^6.4.3",
     "vitest": "^3.0.0"
   }
 }

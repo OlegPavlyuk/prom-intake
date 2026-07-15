@@ -26,5 +26,6 @@
     "eslint.config.js",
     "vitest.config.ts",
     ".dependency-cruiser.cjs"
-  ]
+  ],
+  "exclude": ["src/apps"]
 }

@@ -74,6 +74,29 @@ module.exports = {
       to: { circular: true },
     },
 
+    // --- Client apps vs. DOM-free backend (ADR-0010) --------------------------
+    {
+      name: "backend-stays-dom-free",
+      comment:
+        "Domain packages and Bots must never depend on React/DOM or on the client apps (ADR-0010 A4). The backend stays node-only, so `src/packages/**` may not import react/react-dom/@medplum/react or anything under `src/apps/**`.",
+      severity: "error",
+      from: { path: `^${R}/` },
+      to: {
+        path: [
+          "^src/apps/",
+          "(^|/)node_modules/(react|react-dom|@medplum/react)(/|$)",
+        ],
+      },
+    },
+    {
+      name: "apps-are-credential-isolated",
+      comment:
+        "The two client apps are independent, credential-isolated bundles (ADR-0010 A2). Neither app may import the other; shared code belongs in a package under `src/packages/**`.",
+      severity: "error",
+      from: { path: "^src/apps/([^/]+)/" },
+      to: { path: "^src/apps/([^/]+)/", pathNot: "^src/apps/$1/" },
+    },
+
     // --- Layering (optional, off by default) ----------------------------------
     // Interface-hiding controls HOW you import (through the entry points).
     // Layering controls WHICH packages may depend on which. Add your own rules
