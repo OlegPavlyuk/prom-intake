@@ -7,13 +7,13 @@ Features map to the requirements in [`requirements.md`](requirements.md).
 
 | Feature | Description | v1? | Requirements | Status |
 | ------- | ----------- | --- | ------------ | ------ |
-| Generic PROM engine | Instruments (items, scoring, triggers) defined as configuration, not code | Yes | FR-1, FR-4, NFR-2 | In progress (config schema + config-driven loader landed, #14) |
+| Generic PROM engine | Instruments (items, scoring, triggers) defined as configuration, not code | Yes | FR-1, FR-4, NFR-2 | In progress (config schema + config-driven loader landed #14; instrument-agnostic scoring/trigger engine landed #18) |
 | PHQ-9 instrument | PHQ-9 configured on the engine (9 items, 0-27, bands, triggers) | Yes | FR-2, FR-18, FR-20 | In progress (defined & loadable, #14) |
-| Automatic scoring | Compute the Score from a submitted Response, no manual step | Yes | FR-3 | Idea |
+| Automatic scoring | Compute the Score from a submitted Response, no manual step | Yes | FR-3 | In progress (pure scoring engine landed #18; Subscription -> Bot wiring #19) |
 | Assignment & Access link | Assign an Instrument to a patient; deliver via unique expiring single-use link | Yes | FR-5-FR-11 | Idea |
 | Patient completion flow | Account-free completion of the Instrument via the link, all-items-required | Yes | FR-13, FR-14, FR-16 | Idea |
 | Crisis Response | Immediate informational crisis resources on a positive acute-risk answer | Yes | FR-15 | Idea |
-| Trigger evaluation | Evaluate severity-band and critical/acute-risk triggers on submit; raise Flags | Yes | FR-17-FR-22 | Idea |
+| Trigger evaluation | Evaluate severity-band and critical/acute-risk triggers on submit; raise Flags | Yes | FR-17-FR-22 | In progress (pure severity-band/critical-item/acute-risk evaluation + Flag construction landed #18; Bot wiring + Flag persistence #19) |
 | Flag Worklist | Shared, priority-ordered list of unresolved Flags | Yes | FR-23-FR-25 | Idea |
 | Flag detail view | Show the clinical signal behind a Flag | Yes | FR-29 | Idea |
 | Acknowledge & Resolve | Claim a Flag; resolve with a predefined reason + optional note | Yes | FR-26-FR-28, FR-30 | Idea |
