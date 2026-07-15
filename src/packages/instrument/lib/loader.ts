@@ -5,6 +5,7 @@
 
 import type { MedplumClient } from "@medplum/core";
 import type { Instrument, InstrumentKey } from "../../domain/instrument.js";
+import type { Questionnaire } from "@medplum/fhirtypes";
 import { fromBasic } from "./config-codec.js";
 import { itemsFromQuestionnaire } from "./questionnaire-codec.js";
 import {
@@ -53,6 +54,34 @@ export async function loadInstrument(
       ? { crisisResponse: config.crisisResponse }
       : {}),
   };
+}
+
+/**
+ * Load a fully-resolved Instrument from the canonical URL of its `Questionnaire`
+ * - the identity a submitted `QuestionnaireResponse` carries. Resolves the URL
+ * to the Instrument's stable key via the `Questionnaire`'s instrument-key
+ * identifier (the same identifier binds the config `Basic`), then defers to
+ * {@link loadInstrument}. This is the Scoring Bot's entry into config (ADR-0004):
+ * a Response references its `Questionnaire`, not the Instrument key directly.
+ */
+export async function loadInstrumentByQuestionnaireUrl(
+  medplum: MedplumClient,
+  questionnaireUrl: string
+): Promise<Instrument> {
+  const questionnaire: Questionnaire | undefined = await medplum.searchOne(
+    "Questionnaire",
+    { url: questionnaireUrl }
+  );
+  const key = questionnaire?.identifier?.find(
+    (i) => i.system === ID_INSTRUMENT_KEY
+  )?.value;
+  if (!key) {
+    throw new InstrumentNotFoundError(
+      questionnaireUrl,
+      "no Questionnaire with an instrument-key identifier matches this URL"
+    );
+  }
+  return loadInstrument(medplum, key);
 }
 
 /** Raised when no Instrument (config or Questionnaire) is loadable for a key. */

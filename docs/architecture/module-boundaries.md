@@ -27,10 +27,22 @@ never touch `Task`, `Observation`, or tokens directly.
   returns the Score, the Score Observation model(s) (via the `ObservationEmitter`), and the Flag
   domain object(s) to raise (Open, `authoredOn`, trigger refs). It is instrument-agnostic (PHQ-9 and
   a synthetic second Instrument drive it via config only; FR-4/NFR-2) and holds **no** FHIR/Bot
-  wiring. The Subscription -> Bot adapter that persists those results idempotently is #19
-  ([ADR-0009](../adr/0009-bots-as-adapters-over-shared-domain-logic.md)); mapping the raised Flag
-  domain object to a Flag `Task` stays the Flag module's concern
-  ([ADR-0002](../adr/0002-flag-as-fhir-task.md)).
+  wiring. The Subscription -> Bot adapter that persists those results idempotently **landed (#19)** as
+  the `scoring` package's `scoreResponse` (called by `src/packages/scoring/bot.ts`, a thin adapter):
+  it resolves the Instrument from the Response's `Questionnaire`, runs the pure kernel, always upserts
+  the Score `Observation` (conditional create on `derivedFrom` + LOINC code; FR-32), raises a Flag
+  per fired Trigger via the Flag module, and re-asserts Assignment completion via the Assignment
+  module - all idempotent under at-least-once redelivery
+  ([ADR-0009](../adr/0009-bots-as-adapters-over-shared-domain-logic.md)). The Access-link submit path
+  completes the Assignment on the fast path (#17); the Scoring Bot's completion is the recovery if
+  that best-effort step did not land. Mapping the raised Flag domain object to a Flag `Task` stays the
+  Flag module's concern ([ADR-0002](../adr/0002-flag-as-fhir-task.md)).
+- **Worklist / Flag service scope today:** the module (`worklist` package) owns the Flag `Task`
+  (`code=flag`). #19 landed its **Flag-creation seam** only - `raiseFlag`, an idempotent conditional
+  create keyed on the (Response, Trigger) origin, which the Scoring Bot calls to raise a Flag without
+  ever building a `Task` inline ([ADR-0002](../adr/0002-flag-as-fhir-task.md)/
+  [ADR-0009](../adr/0009-bots-as-adapters-over-shared-domain-logic.md)). Listing via `PriorityPolicy`,
+  `acknowledge`, and `resolve` are later slices (#20/#21+).
 - The Access link is delivery only; the durable Assignment lives in the Assignment module
   ([ADR-0001](../adr/0001-assignment-as-fhir-task.md)). Swapping delivery channels never touches the
   domain.

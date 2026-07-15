@@ -36,7 +36,13 @@ sequenceDiagram
   Score->>F: upsert Score Observation (always - FR-32)
   Score->>Score: evaluate each Trigger (severity band, acute-risk Item 9)
   Score->>F: upsert Flag Task per fired Trigger (conditional)
+  Score->>F: re-assert Assignment completion (idempotent; ADR-0009)
 ```
+
+The Scoring Bot re-asserts Assignment completion via the Assignment module (idempotent). The submit
+Bot completes the Assignment on the fast path ([ADR-0005](../adr/0005-access-link-security-model.md));
+this is the recovery the Access-link module relies on if that best-effort step did not land - a
+`QuestionnaireResponse` proves the Response is stored, so its Assignment must reach Completed.
 
 ## Idempotency & retries
 
@@ -44,6 +50,16 @@ The Scoring Bot uses **conditional creates / upserts** keyed on `derivedFrom` + 
 event never double-writes an Observation or a duplicate Flag. Token consumption is **atomic** with
 `QuestionnaireResponse` creation in the submit Bot, preventing double submissions
 ([ADR-0005](../adr/0005-access-link-security-model.md)).
+
+## Implemented (#19)
+
+The Scoring Bot (`src/packages/scoring/bot.ts`) is a thin adapter over the `scoring` module's
+`scoreResponse`, and the Subscription (`criteria: QuestionnaireResponse`, `channel` -> the Bot) is
+created by `npm run medplum:deploy-bots` (see [infrastructure.md](infrastructure.md)). The criteria
+stays instrument-agnostic - the Bot resolves the Instrument from the Response's `Questionnaire` and
+no-ops any it cannot score, so a further Instrument needs no Subscription change. The always-writes,
+per-Trigger, and idempotent-redelivery behaviour is covered by the integration seam
+(`src/packages/scoring/tests/scoring.integration.test.ts`).
 
 ## Not async (deliberately)
 
