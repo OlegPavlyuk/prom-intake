@@ -13,4 +13,7 @@ export { loadInstrument, InstrumentNotFoundError } from "./lib/loader.js";
 // `@medplum/react`'s `QuestionnaireForm` can render - e.g. the patient
 // completion page (#16), which is unauthenticated and cannot search Medplum
 // directly (ADR-0010 A3).
-export { toQuestionnaire } from "./lib/questionnaire-codec.js";
+export {
+  toQuestionnaire,
+  toQuestionnaireResponse,
+} from "./lib/questionnaire-codec.js";

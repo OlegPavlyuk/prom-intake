@@ -88,6 +88,7 @@ describeIntegration("Access-link seam: issue + validate (ADR-0005)", () => {
       assignmentId: assignment.id,
       patientId: assignment.patientId,
       questionnaireUrl: PHQ9.questionnaireUrl,
+      instrumentKey: PHQ9.key,
     });
     // The link expiry mirrors the Assignment deadline (FR-7, one config value).
     expect(issued.expiresAt).toBe(assignment.deadline);
@@ -98,6 +99,7 @@ describeIntegration("Access-link seam: issue + validate (ADR-0005)", () => {
       assignmentId: assignment.id,
       patientId: assignment.patientId,
       questionnaireUrl: PHQ9.questionnaireUrl,
+      instrumentKey: PHQ9.key,
     });
   });
 

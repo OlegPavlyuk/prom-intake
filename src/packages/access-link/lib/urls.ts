@@ -17,6 +17,9 @@ export const ID_ACCESS_TOKEN_HASH = `${PROJECT_BASE}/access-token-hash`;
 export const EXT_ACCESS_LINK_ROOT = `${PROJECT_BASE}/StructureDefinition/access-link-token`;
 export const EXT_ASSIGNMENT = "assignment";
 export const EXT_QUESTIONNAIRE_URL = "questionnaireUrl";
+export const EXT_INSTRUMENT_KEY = "instrumentKey";
 export const EXT_STATUS = "status";
 export const EXT_EXPIRES_AT = "expiresAt";
 export const EXT_ISSUED_AT = "issuedAt";
+/** Audit stamp: when the single-use token was burned on submit (ADR-0005). */
+export const EXT_SUBMITTED_AT = "submittedAt";

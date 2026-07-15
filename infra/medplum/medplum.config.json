@@ -23,5 +23,6 @@
     "password": "medplum"
   },
   "logLevel": "info",
-  "registerEnabled": true
+  "registerEnabled": true,
+  "vmContextBotsEnabled": true
 }

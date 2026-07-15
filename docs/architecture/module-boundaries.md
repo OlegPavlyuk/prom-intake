@@ -32,10 +32,14 @@ never touch `Task`, `Observation`, or tokens directly.
   than being duplicated across the Instrument, Assignment, Access-link, and Worklist modules. It
   holds no feature logic; module-specific identifiers (an Instrument's config extensions, the
   Access-link token's extensions) stay private to their own module.
-- **Access link scope today:** `issue` + read-only `validate` are implemented. The single-use
-  `consume`-on-submit burn (atomic with `QuestionnaireResponse` creation, via the `publicWebhook`
-  Bot) lands with the submit ticket; until then no submit path is wired, so the read-only validate
-  carries no single-use exposure.
+- **Access link scope today:** `issue`, read-only `validate`/`open`, and single-use
+  `submit`(consume) are all implemented (#17). `submit` burns the token via an optimistic-lock
+  compare-and-swap (`If-Match`), then creates the `QuestionnaireResponse` and completes the
+  Assignment; Medplum transaction Bundles are **not** atomic on a failed precondition, so the CAS
+  burn is the race gate and a failed create is compensated by reverting the burn (see
+  [ADR-0005](../adr/0005-access-link-security-model.md) and the submit Bot's module note). The
+  `publicWebhook` Bot (`src/packages/access-link/bot.ts`) is a thin adapter over `openAccessLink` /
+  `submitAccessLinkResponse`; deployment is in [infrastructure.md](infrastructure.md).
 
 ## Dependency rules
 
@@ -47,7 +51,10 @@ dependency-cruiser via the `/setup-ts-deep-modules` skill (entry-point boundary,
 - The **Scoring engine** depends on **Instrument** (for config) and raises Flags by calling the
   **Flag module's exported Flag-construction function**, and marks the Assignment complete via the
   **Assignment module's** function - never by building a `Task` inline.
-- The **Access link** depends on **Assignment** (the token binds to an Assignment).
+- The **Access link** depends on **Assignment** (the token binds to an Assignment, and `submit`
+  completes it) and on **Instrument** (to re-check completeness server-side and build the
+  `QuestionnaireResponse` on submit; #17). It composes both through their entry points, never by
+  building their resources inline (ADR-0009).
 - No module reads another module's FHIR resources directly; cross-module access is through the
   domain interface only.
 - The **client apps** (`src/apps/`, [ADR-0010](../adr/0010-frontend-architecture.md)) sit at the

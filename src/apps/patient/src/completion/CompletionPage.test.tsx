@@ -5,17 +5,22 @@ import { MockClient } from "@medplum/mock";
 import { MantineProvider } from "@mantine/core";
 import { describe, expect, it, vi } from "vitest";
 import { CompletionPage } from "./CompletionPage";
-import type { AccessLinkOpenResult } from "./resolvePatientAccessLink";
+import type {
+  AccessLinkOpenResult,
+  SubmitPatientResponse,
+} from "./resolvePatientAccessLink";
 import { FIXTURE_INSTRUMENT } from "./fixtures";
 
 // The account-less patient completion page's client seam (ui vitest project):
-// drive it through the injectable `resolve` function, never a real network
-// call (#16; the real resolution mechanism lands with #17 - see the resolver's
-// own doc comment and the #16 issue comment).
+// drive it through the injectable `resolve`/`submit` functions, never a real
+// network call - both post to the Access-link publicWebhook Bot in production
+// (#17, ADR-0005).
 function renderPage(
   resolve: (token: string) => Promise<AccessLinkOpenResult>,
   token: string | null = "some-token",
-  onSubmit?: () => void
+  submit: SubmitPatientResponse = vi
+    .fn()
+    .mockResolvedValue({ status: "submitted", responseId: "qr-1" })
 ) {
   const medplum = new MockClient({ profile: null });
   const createSpy = vi.spyOn(medplum, "createResource");
@@ -24,11 +29,11 @@ function renderPage(
   const utils = render(
     <MedplumProvider medplum={medplum}>
       <MantineProvider>
-        <CompletionPage token={token} resolve={resolve} onSubmit={onSubmit} />
+        <CompletionPage token={token} resolve={resolve} submit={submit} />
       </MantineProvider>
     </MedplumProvider>
   );
-  return { ...utils, createSpy, updateSpy, patchSpy };
+  return { ...utils, createSpy, updateSpy, patchSpy, submit };
 }
 
 function radioFor(
@@ -117,26 +122,80 @@ describe("CompletionPage: open (FR-11, FR-13, NFR-5)", () => {
 });
 
 describe("CompletionPage: completeness gate (FR-14)", () => {
-  it("blocks submit until every item is answered, then allows it", async () => {
+  it("blocks submit until every item is answered, then posts the answers", async () => {
     const user = userEvent.setup();
     const resolve = vi
       .fn()
       .mockResolvedValue({ status: "valid", instrument: FIXTURE_INSTRUMENT });
-    const onSubmit = vi.fn();
-    const { container } = renderPage(resolve, "some-token", onSubmit);
+    const submit = vi
+      .fn()
+      .mockResolvedValue({ status: "submitted", responseId: "qr-1" });
+    const { container } = renderPage(resolve, "some-token", submit);
 
     await screen.findByRole("heading", { name: "Fixture Instrument" });
-    const submit = screen.getByRole("button", { name: "Submit" });
-    expect(submit).toBeDisabled();
+    const button = screen.getByRole("button", { name: "Submit" });
+    expect(button).toBeDisabled();
 
     await user.click(radioFor(container, "q1", "Yes"));
-    expect(submit).toBeDisabled();
+    expect(button).toBeDisabled();
 
     await user.click(radioFor(container, "q2", "No"));
-    expect(submit).toBeEnabled();
+    expect(button).toBeEnabled();
 
-    await user.click(submit);
-    expect(onSubmit).toHaveBeenCalledOnce();
+    await user.click(button);
+    // The domain answers are posted for exactly the answered items (FR-13).
+    expect(submit).toHaveBeenCalledWith({
+      token: "some-token",
+      answers: [
+        { linkId: "q1", answerCode: "yes" },
+        { linkId: "q2", answerCode: "no" },
+      ],
+    });
+  });
+});
+
+describe("CompletionPage: submit outcomes (FR-8/FR-13)", () => {
+  async function completeAndSubmit(
+    submit: SubmitPatientResponse
+  ): Promise<void> {
+    const user = userEvent.setup();
+    const resolve = vi
+      .fn()
+      .mockResolvedValue({ status: "valid", instrument: FIXTURE_INSTRUMENT });
+    const { container } = renderPage(resolve, "some-token", submit);
+    await screen.findByRole("heading", { name: "Fixture Instrument" });
+    await user.click(radioFor(container, "q1", "Yes"));
+    await user.click(radioFor(container, "q2", "No"));
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+  }
+
+  it("shows a confirmation when the Response is accepted", async () => {
+    await completeAndSubmit(
+      vi.fn().mockResolvedValue({ status: "submitted", responseId: "qr-1" })
+    );
+    expect(
+      await screen.findByRole("heading", {
+        name: "Thank you - your answers were submitted",
+      })
+    ).toBeInTheDocument();
+  });
+
+  it("shows the friendly 'no longer available' page when the link was already used", async () => {
+    await completeAndSubmit(vi.fn().mockResolvedValue({ status: "used" }));
+    expect(
+      await screen.findByRole("heading", {
+        name: "This link is no longer available",
+      })
+    ).toBeInTheDocument();
+  });
+
+  it("shows a retryable inline error when the submit call itself fails", async () => {
+    await completeAndSubmit(vi.fn().mockRejectedValue(new Error("network")));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /couldn't submit your answers/i
+    );
+    // The form is still there to retry, not a terminal page.
+    expect(screen.getByRole("button", { name: "Submit" })).toBeInTheDocument();
   });
 });
 

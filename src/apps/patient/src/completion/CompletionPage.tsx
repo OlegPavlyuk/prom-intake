@@ -7,10 +7,14 @@ import type {
 } from "@medplum/fhirtypes";
 import { QuestionnaireForm } from "@medplum/react";
 import type { Instrument } from "../../../../packages/domain/instrument.js";
+import type { ResponseAnswer } from "../../../../packages/domain/workflow.js";
 import { isAcuteRiskAnswer } from "../../../../packages/domain/instrument-queries.js";
 import { toQuestionnaire } from "../../../../packages/instrument/index.js";
 import { CrisisResponse } from "./CrisisResponse";
-import type { ResolvePatientAccessLink } from "./resolvePatientAccessLink";
+import type {
+  ResolvePatientAccessLink,
+  SubmitPatientResponse,
+} from "./resolvePatientAccessLink";
 
 export interface CompletionPageProps {
   /** The token presented in the Access-link URL, or `null` if none was given. */
@@ -18,11 +22,11 @@ export interface CompletionPageProps {
   /** The account-less "open" seam - injectable so tests never hit the network. */
   readonly resolve: ResolvePatientAccessLink;
   /**
-   * Called once every required item is answered and the patient chooses to
-   * submit. The actual server write is #17's; this ticket only gates the
-   * control.
+   * The "submit" seam: POSTs token + answers to the Access-link Bot, which
+   * validates + re-checks completeness + atomically consumes server-side (#17).
+   * Injectable so tests never hit the network.
    */
-  readonly onSubmit?: () => void;
+  readonly submit: SubmitPatientResponse;
 }
 
 type PageState =
@@ -38,7 +42,7 @@ type PageState =
 export function CompletionPage({
   token,
   resolve,
-  onSubmit,
+  submit,
 }: CompletionPageProps): JSX.Element {
   const [state, setState] = useState<PageState>({ kind: "loading" });
 
@@ -57,7 +61,9 @@ export function CompletionPage({
         setState(
           result.status === "valid"
             ? { kind: "ready", instrument: result.instrument }
-            : { kind: result.status }
+            : // A used link is no longer available, like an expired one - same
+              // friendly page (FR-8/FR-11).
+              { kind: result.status === "used" ? "expired" : result.status }
         );
       })
       .catch(() => {
@@ -82,7 +88,13 @@ export function CompletionPage({
     return <FriendlyStatusPage kind={state.kind} />;
   }
 
-  return <InstrumentForm instrument={state.instrument} onSubmit={onSubmit} />;
+  return (
+    <InstrumentForm
+      instrument={state.instrument}
+      token={token}
+      submit={submit}
+    />
+  );
 }
 
 function FullPageCenter({
@@ -126,12 +138,20 @@ function FriendlyStatusPage({
   );
 }
 
+/** The submit phase of the form: idle, in-flight, failed (retryable), or done. */
+type SubmitPhase =
+  | { readonly kind: "idle" }
+  | { readonly kind: "submitting" }
+  | { readonly kind: "error" };
+
 function InstrumentForm({
   instrument,
-  onSubmit,
+  token,
+  submit,
 }: {
   readonly instrument: Instrument;
-  readonly onSubmit?: () => void;
+  readonly token: string | null;
+  readonly submit: SubmitPatientResponse;
 }): JSX.Element {
   const questionnaire = useMemo(
     () => toQuestionnaire(instrument),
@@ -141,29 +161,71 @@ function InstrumentForm({
     Record<string, QuestionnaireResponseItemAnswer>
   >({});
   const [crisisVisible, setCrisisVisible] = useState(false);
+  const [phase, setPhase] = useState<SubmitPhase>({ kind: "idle" });
+  const [outcome, setOutcome] = useState<"submitted" | "unavailable" | null>(
+    null
+  );
 
   function handleChange(response: QuestionnaireResponse): void {
-    const nextAnswers = getQuestionnaireAnswers(response);
-    setAnswers(nextAnswers);
+    // `QuestionnaireForm` fires `onChange` synchronously during its own initial
+    // render; deferring the state update keeps React from warning about a
+    // setState during another component's render (and is harmless for the
+    // user-driven changes that follow).
+    queueMicrotask(() => {
+      const nextAnswers = getQuestionnaireAnswers(response);
+      setAnswers(nextAnswers);
 
-    const acuteRiskLinkId = instrument.acuteRiskItemLinkId;
-    const code = acuteRiskLinkId
-      ? nextAnswers[acuteRiskLinkId]?.valueCoding?.code
-      : undefined;
-    if (
-      acuteRiskLinkId &&
-      code &&
-      isAcuteRiskAnswer(instrument, acuteRiskLinkId, code)
-    ) {
-      // Sticky once shown - a safety message should not disappear just
-      // because the patient revises an earlier answer (FR-15).
-      setCrisisVisible(true);
-    }
+      const acuteRiskLinkId = instrument.acuteRiskItemLinkId;
+      const code = acuteRiskLinkId
+        ? nextAnswers[acuteRiskLinkId]?.valueCoding?.code
+        : undefined;
+      if (
+        acuteRiskLinkId &&
+        code &&
+        isAcuteRiskAnswer(instrument, acuteRiskLinkId, code)
+      ) {
+        // Sticky once shown - a safety message should not disappear just
+        // because the patient revises an earlier answer (FR-15).
+        setCrisisVisible(true);
+      }
+    });
   }
 
   const isComplete = instrument.items.every(
     (item) => answers[item.linkId] !== undefined
   );
+
+  async function handleSubmit(): Promise<void> {
+    if (!token || !isComplete) {
+      return;
+    }
+    setPhase({ kind: "submitting" });
+    try {
+      const responseAnswers: ResponseAnswer[] = instrument.items.flatMap(
+        (item) => {
+          const answerCode = answers[item.linkId]?.valueCoding?.code;
+          return answerCode ? [{ linkId: item.linkId, answerCode }] : [];
+        }
+      );
+      const result = await submit({ token, answers: responseAnswers });
+      if (result.status === "submitted") {
+        setOutcome("submitted");
+      } else {
+        // used / expired / not-found / incomplete: the link can no longer be
+        // completed here - show the friendly terminal page (FR-8/FR-11).
+        setOutcome("unavailable");
+      }
+    } catch {
+      setPhase({ kind: "error" });
+    }
+  }
+
+  if (outcome === "submitted") {
+    return <SubmittedPage />;
+  }
+  if (outcome === "unavailable") {
+    return <FriendlyStatusPage kind="expired" />;
+  }
 
   return (
     <Container size="sm" py="xl">
@@ -185,14 +247,37 @@ function InstrumentForm({
           onChange={handleChange}
         />
 
+        {phase.kind === "error" && (
+          <Text c="red" size="sm" role="alert">
+            We couldn't submit your answers just now. Please try again.
+          </Text>
+        )}
+
         <Button
-          disabled={!isComplete}
-          onClick={() => onSubmit?.()}
+          disabled={!isComplete || phase.kind === "submitting"}
+          loading={phase.kind === "submitting"}
+          onClick={() => void handleSubmit()}
           style={{ alignSelf: "flex-start" }}
         >
           Submit
         </Button>
       </Stack>
     </Container>
+  );
+}
+
+function SubmittedPage(): JSX.Element {
+  return (
+    <FullPageCenter>
+      <Container size="xs">
+        <Stack gap="sm" ta="center">
+          <Title order={2}>Thank you - your answers were submitted</Title>
+          <Text c="dimmed">
+            Your care coordinator will follow up with you. You can close this
+            page now.
+          </Text>
+        </Stack>
+      </Container>
+    </FullPageCenter>
   );
 }
