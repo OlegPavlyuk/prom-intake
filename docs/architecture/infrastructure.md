@@ -68,6 +68,13 @@ npm run build:coordinator     # static bundle -> src/apps/coordinator/dist/
 npm run preview:coordinator   # serve the built bundle
 ```
 
+- **Logging in during verification.** Built-in auth (`SignInForm`) needs a real email/password user;
+  `npm run medplum:provision` only mints client-credentials for the integration harness.
+  `npm run medplum:dev-user` registers a known-credential user in a throwaway project and writes
+  `.dev-user.json` (gitignored). The browser verification recipe is the `verifier-ui` skill
+  ([`docs/architecture/testing-strategy.md`](testing-strategy.md)); Playwright is installed
+  ephemerally per session, not committed (deferred to the E2E ticket, [ADR-0010](../adr/0010-frontend-architecture.md)).
+
 - **DOM-free backend boundary.** The base [`tsconfig.json`](../../tsconfig.json) stays node-only (it
   `exclude`s `src/apps`); a dedicated `src/apps/tsconfig.json` adds the DOM `lib` for apps, so
   `npm run typecheck` runs both. A dependency-cruiser rule forbids `src/packages/**` from importing

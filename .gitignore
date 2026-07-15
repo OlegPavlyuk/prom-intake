@@ -15,6 +15,9 @@ coverage/
 .env.*
 !.env.example
 
+# Dev-only Medplum login credentials (npm run medplum:dev-user)
+.dev-user.json
+
 # Logs
 *.log
 npm-debug.log*

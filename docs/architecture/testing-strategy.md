@@ -52,4 +52,10 @@ not decided against the one-screen app foundation (#28).
 
 ## Verification
 Manual verification of user-facing changes uses the `/verify` skill (run the app, observe
-behaviour) before merge - the tracer-bullet flow above is the canonical thing to observe.
+behaviour) before merge - the tracer-bullet flow above is the canonical thing to observe. For the
+**client apps** (`src/apps/`), the repo's browser recipe is the **`verifier-ui`** skill
+(`.agents/skills/verifier-ui/`): it drives the Vite/React surface in a real browser against local
+Medplum, logs in via built-in auth (`npm run medplum:dev-user`), and carries the auth-flow checklist
+(gate -> authenticated -> refresh persists -> logout -> no session resurrection). Browser tooling is
+installed ephemerally per session (Playwright stays out of `package.json` until the E2E ticket, per
+[ADR-0010](../adr/0010-frontend-architecture.md)).

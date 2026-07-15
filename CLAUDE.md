@@ -45,6 +45,10 @@ not from a prior conversation.
 - **Never** use the em dash. Use a plain dash `-`.
 - **Tests** exercise behaviour through a module's seam, not its internals. `/implement` uses TDD at
   the agreed seams.
+- **Verifying client-app (UI) changes** in a real browser: use the **`verifier-ui`** skill
+  (`.agents/skills/verifier-ui/`). It carries the browser harness, the Medplum built-in-auth login
+  (`npm run medplum:dev-user`), and the auth-flow checklist, so UI verification is not re-derived per
+  ticket. `/verify` picks it up automatically as this repo's `verifier-*` protocol.
 - **Packages are deep modules** - import only through a package's entry points (its root files),
   never its subfolders. See [`src/packages/README.md`](src/packages/README.md) before adding or
   importing one. Boundaries are enforced by `npm run lint:boundaries`.
