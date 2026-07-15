@@ -82,9 +82,11 @@ npm run preview:coordinator   # serve the built bundle
   importing each other), so Bots and domain modules never pull in DOM/React. Enforced by
   `npm run lint:boundaries` in CI + pre-commit. Client React components are tested in the `ui` vitest
   project (jsdom); the `unit`/`integration` node projects stay DOM-free.
-- **Config.** The Coordinator app needs the Patient-app base URL (to assemble Access-link URLs, from
-  #29) and the Medplum base URL; both are Vite build/runtime env vars (`VITE_*`), never secrets -
-  today it reads `VITE_MEDPLUM_BASE_URL` (default `http://localhost:8103/`), documented in
+- **Config.** The Coordinator app reads two non-secret Vite build/runtime env vars (`VITE_*`):
+  `VITE_MEDPLUM_BASE_URL` (the Medplum server it authenticates against; default
+  `http://localhost:8103/`) and `VITE_PATIENT_APP_BASE_URL` (the Patient completion page base used to
+  assemble the patient-facing Access-link URL from an issued token - the Coordinator app is the
+  delivery layer, ADR-0010; default `http://localhost:3001/`). Both are documented in
   [`src/apps/coordinator/.env.example`](../../src/apps/coordinator/.env.example). Concrete
   hosting/deploy targets for the two static bundles are _TBD_ (see below).
 

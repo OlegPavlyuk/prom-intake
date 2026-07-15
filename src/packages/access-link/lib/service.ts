@@ -31,7 +31,7 @@ export async function issueAccessLink(
   opts?: { now?: Date }
 ): Promise<IssuedAccessLink> {
   const now = opts?.now ?? new Date();
-  const { token, hash } = mintToken();
+  const { token, hash } = await mintToken();
   const binding = {
     assignmentId: assignment.id,
     patientId: assignment.patientId,
@@ -60,8 +60,9 @@ export async function validateAccessLink(
   opts?: { now?: Date }
 ): Promise<AccessLinkValidation> {
   const now = opts?.now ?? new Date();
+  const tokenHash = await hashToken(rawToken);
   const basic = await medplum.searchOne("Basic", {
-    identifier: `${ID_ACCESS_TOKEN_HASH}|${hashToken(rawToken)}`,
+    identifier: `${ID_ACCESS_TOKEN_HASH}|${tokenHash}`,
     code: `${CS_BASIC_TYPE}|${BASIC_TYPE_ACCESS_LINK_TOKEN}`,
   });
   if (!basic) {
