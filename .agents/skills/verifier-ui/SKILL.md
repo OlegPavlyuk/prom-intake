@@ -12,8 +12,8 @@ surface, capture what you see); **this** skill is the concrete recipe so you do
 not re-derive the browser harness and the Medplum login each time.
 
 Use it whenever a change touches a client app and you need to observe it in the
-browser: the coordinator app shell/auth (#28), the assign UI (#29), the patient
-completion page (#16), the Worklist (#21).
+browser: the Coordinator app shell and auth, the assign flow, the Patient
+completion page, or the Worklist.
 
 > **Not committed E2E infra.** ADR-0010 defers browser-E2E tooling (Playwright
 > etc.) to the tracer-bullet E2E ticket. This recipe installs `playwright-core`
@@ -52,8 +52,9 @@ integration harness and cannot log a human in.
    ```
 
    - The driver launches the **system Chrome** via `executablePath` (this repo
-     has no downloaded Playwright browser). On macOS:
-     `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`.
+     has no downloaded Playwright browser). Set it to your OS's Chrome path -
+     e.g. macOS `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`,
+     Linux typically `/usr/bin/google-chrome`.
    - **The driver script must live at the repo root** (e.g. `.verify-drive.mjs`).
      ESM ignores `NODE_PATH`, so a script in a scratch dir cannot resolve
      `playwright-core` from the repo's `node_modules`.
@@ -69,6 +70,7 @@ integration harness and cannot log a human in.
    const shot = (n) => `/tmp/shot-${n}.png`;
 
    const browser = await chromium.launch({
+     // macOS system Chrome; set to your OS's Chrome path.
      executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
      headless: true,
    });
@@ -110,8 +112,10 @@ integration harness and cannot log a human in.
    ```
 
    Read the screenshots (`/tmp/shot-*.png`) - they are the evidence. Watch the
-   `PAGE ERROR:` lines: a `favicon.ico` 404 or a missing asset is a real UI
-   blemish worth fixing.
+   `PAGE ERROR:` lines for **unexpected or repeated** errors and for genuinely
+   missing assets (a stylesheet, a script, an expected image) - those are real
+   blemishes worth fixing. Use judgement: a single benign 404 is not
+   automatically a defect.
 
 ## Auth-flow checklist (authenticated surfaces)
 
@@ -120,7 +124,7 @@ integration harness and cannot log a human in.
 - [ ] **Refresh persists** the session (no re-login) - the Medplum client stores/refreshes tokens.
 - [ ] **Logout** returns to the sign-in gate (`medplum.signOut()`).
 - [ ] **Reload after logout does not resurrect** the session (no leaked auth).
-- [ ] Console is clean (no 404s / errors).
+- [ ] No unexpected console errors during the flow.
 
 ## Component-test seam (jsdom, not the browser)
 
@@ -137,7 +141,7 @@ above for real end-to-end evidence:
 - Assert your own stable markers (a "Coordinator sign in" heading, a "Sign out"
   button), not `@medplum/react`'s internal form markup.
 
-## Patient surface (#16)
+## Patient surface
 
 The patient completion page is **account-less** ([ADR-0005](../../../docs/adr/0005-access-link-security-model.md)):
 skip the login steps entirely. Drive it by opening an Access-link URL and
@@ -148,7 +152,8 @@ no `SignInForm`, no `ProtectedRoute`, and no stored session.
 
 ```bash
 pkill -f "vite --config src/apps/coordinator" 2>/dev/null   # stop the dev server
-rm -f .verify-drive.mjs src/apps/coordinator/dist -r        # remove the driver + build output
+rm -f .verify-drive.mjs                                     # remove the driver script
+rm -rf src/apps/coordinator/dist                            # remove any build output
 ```
 
 `.dev-user.json` is gitignored; each `medplum:dev-user` run leaves a throwaway
