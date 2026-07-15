@@ -57,16 +57,29 @@ SPAs under `src/apps/`, kept in the **single-package** repo (no npm workspaces i
 | App | Path | Build | Auth |
 | --- | ---- | ----- | ---- |
 | Coordinator app | `src/apps/coordinator/` | `npm run build:coordinator` (own `vite.config.ts`) -> static bundle | Medplum built-in (authenticated) |
-| Patient completion page | `src/apps/patient/` | `vite build` (own `vite.config.ts`) -> static bundle | none (account-less, PHI-minimal) |
+| Patient completion page | `src/apps/patient/` | `npm run build:patient` (own `vite.config.ts`) -> static bundle | none (account-less, PHI-minimal) |
 
 Each app has its own `vite.config.ts` whose `root` is pinned to the app directory, so it is launched
-from the repo root via `--config`. Coordinator scripts (the patient app's land with #16):
+from the repo root via `--config`.
 
 ```bash
 npm run dev:coordinator       # Vite dev server (http://localhost:3000)
 npm run build:coordinator     # static bundle -> src/apps/coordinator/dist/
 npm run preview:coordinator   # serve the built bundle
+
+npm run dev:patient           # Vite dev server (http://localhost:3001)
+npm run build:patient         # static bundle -> src/apps/patient/dist/
+npm run preview:patient       # serve the built bundle
 ```
+
+- **Patient app's "open" step is a documented stopgap (#16).** The patient client is unauthenticated
+  and credential-free (ADR-0010 A3), but resolving an Access-link token needs a server read.
+  Architecture (ADR-0005, this doc's client architecture section) names the `publicWebhook` Bot as
+  the single unauthenticated entry point for both token validation and submit - but that Bot does not
+  exist yet (no Bot-deploy infrastructure is in this repo at all); only #17 scopes its submit half.
+  `src/apps/patient/src/completion/resolvePatientAccessLink.ts` is a documented stub that always
+  resolves `"not-found"` until #17 lands the Bot's validate operation and wires the real call in - see
+  the discussion on issue #16.
 
 - **Logging in during verification.** Built-in auth (`SignInForm`) needs a real email/password user;
   `npm run medplum:provision` only mints client-credentials for the integration harness.

@@ -101,6 +101,13 @@ describeIntegration(
       expect(acuteRiskItem(phq9)?.text).toContain("better off dead");
     });
 
+    it("loads PHQ-9's Crisis Response content (FR-15)", async () => {
+      const phq9 = await loadInstrument(medplum, "phq-9");
+
+      expect(phq9.crisisResponse?.phone).toBe("988");
+      expect(phq9.crisisResponse?.message.length).toBeGreaterThan(0);
+    });
+
     it("loads a synthetic second Instrument through the same module (config-driven)", async () => {
       const synthetic = await loadInstrument(medplum, "synthetic-2item-test");
 
