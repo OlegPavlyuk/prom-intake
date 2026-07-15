@@ -4,7 +4,9 @@ import { MedplumProvider } from "@medplum/react";
 import { CompletionPage } from "./completion/CompletionPage";
 import {
   resolvePatientAccessLink,
+  submitPatientResponse,
   type ResolvePatientAccessLink,
+  type SubmitPatientResponse,
 } from "./completion/resolvePatientAccessLink";
 
 export interface AppProps {
@@ -16,22 +18,26 @@ export interface AppProps {
   readonly medplum: MedplumClient;
   /** Injectable so the UI-seam tests drive the page without a real network call. */
   readonly resolve?: ResolvePatientAccessLink;
+  /** Injectable so the UI-seam tests drive submit without a real network call. */
+  readonly submit?: SubmitPatientResponse;
   /** Injectable for tests; production reads the token from the page URL. */
   readonly token?: string | null;
 }
 
 // The account-less, PHI-minimal patient completion page (ADR-0010 A3): no
 // SignInForm, no ProtectedRoute, no stored session. The only thing on the
-// page is the one Instrument the presented token resolves to.
+// page is the one Instrument the presented token resolves to. Its one server
+// touchpoint is the Access-link publicWebhook Bot (open + submit; ADR-0005).
 export function App({
   medplum,
   resolve = resolvePatientAccessLink,
+  submit = submitPatientResponse,
   token = new URLSearchParams(window.location.search).get("token"),
 }: AppProps): JSX.Element {
   return (
     <MedplumProvider medplum={medplum}>
       <MantineProvider>
-        <CompletionPage token={token} resolve={resolve} />
+        <CompletionPage token={token} resolve={resolve} submit={submit} />
       </MantineProvider>
     </MedplumProvider>
   );

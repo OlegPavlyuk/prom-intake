@@ -18,10 +18,23 @@ secret authorizing one submission).
   link can at most submit **one** Response for **one** patient and can read nothing.
 - Token theft from storage -> only a **hash** is stored (never the raw token); a store leak yields
   no working links.
-- Replay / double submission -> single-use, **consumed atomically** with `QuestionnaireResponse`
-  creation; expiry (14 days, FR-7).
-- Over-broad write from the public endpoint -> the submit Bot runs under a narrow `AccessPolicy`
-  scoped to create `QuestionnaireResponse` only.
+- Replay / double submission -> single-use. Medplum transaction Bundles are not atomic on a failed
+  precondition (verified at implementation), so the burn is an **optimistic-lock compare-and-swap**
+  on the token (`If-Match`, `issued -> consumed`): exactly one concurrent submit wins, the loser is
+  refused, and a Response-create failure reverts the burn (the safe direction - a stuck link is
+  reissued, never double-submitted). Plus expiry (14 days, FR-7). See
+  [ADR-0005](../adr/0005-access-link-security-model.md).
+- Over-broad write from the public endpoint -> the submit Bot runs under a narrow `AccessPolicy`.
+  Its net capability is: **create** one `QuestionnaireResponse` (create-only, no read - answers
+  cannot be harvested), **read/update** the access-link token `Basic` (to validate + burn), read the
+  blank `Questionnaire` + `InstrumentConfig` (non-PHI reference data, for the completeness re-check),
+  and **update** the bound assignment `Task` to Completed (write restricted by `criteria` to
+  `code=assignment`, never Flags). No `Patient` or `Observation` access at all. This is wider than
+  the literal "create `QuestionnaireResponse` only" of ADR-0005 - the token burn and the FR-8/FR-9
+  Assignment completion both require scoped writes - but a leaked link still reads no PHI and can
+  submit at most one Response for one patient. The real per-Assignment scoping is the token binding
+  enforced in the Bot's code; the `AccessPolicy` is defence in depth. Deploy pipeline in
+  [infrastructure.md](infrastructure.md).
 
 ## Authentication & authorization
 

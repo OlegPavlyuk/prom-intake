@@ -5,9 +5,17 @@
 // raw token (ADR-0005). All FHIR/crypto detail is hidden here; callers speak
 // Access links and bindings (module-boundaries).
 //
-// Scope: `issue` + read-only `validate`. The single-use `consume`-on-submit burn
-// (atomic with QuestionnaireResponse creation) lands with the submit Bot (#17).
+// Scope: `issue` a token, `validate`/`open` it read-only, and `submit` a Response
+// through it - the single-use consume-on-submit burn, compare-and-swap atomic
+// with QuestionnaireResponse creation and Assignment completion (#17, ADR-0005).
+// The `publicWebhook` Bot (./bot.js) is a thin adapter over these functions.
 //
-// Domain types (`IssuedAccessLink`, `AccessLinkValidation`, ...) live in the
-// `domain` package and are imported from there directly.
-export { issueAccessLink, validateAccessLink } from "./lib/service.js";
+// Domain types (`IssuedAccessLink`, `AccessLinkValidation`, `AccessLinkOpen`,
+// `AccessLinkSubmission`, ...) live in the `domain` package and are imported
+// from there directly.
+export {
+  issueAccessLink,
+  validateAccessLink,
+  openAccessLink,
+  submitAccessLinkResponse,
+} from "./lib/service.js";

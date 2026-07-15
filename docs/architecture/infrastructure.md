@@ -72,14 +72,12 @@ npm run build:patient         # static bundle -> src/apps/patient/dist/
 npm run preview:patient       # serve the built bundle
 ```
 
-- **Patient app's "open" step is a documented stopgap (#16).** The patient client is unauthenticated
-  and credential-free (ADR-0010 A3), but resolving an Access-link token needs a server read.
-  Architecture (ADR-0005, this doc's client architecture section) names the `publicWebhook` Bot as
-  the single unauthenticated entry point for both token validation and submit - but that Bot does not
-  exist yet (no Bot-deploy infrastructure is in this repo at all); only #17 scopes its submit half.
-  `src/apps/patient/src/completion/resolvePatientAccessLink.ts` is a documented stub that always
-  resolves `"not-found"` until #17 lands the Bot's validate operation and wires the real call in - see
-  the discussion on issue #16.
+- **Patient app's server touchpoint is the Access-link Bot (#17).** The patient client is
+  unauthenticated and credential-free (ADR-0010 A3); its one server touchpoint is the `publicWebhook`
+  Bot (below), which serves both `open` (validate + render the blank Instrument) and `submit` (atomic
+  consume). `src/apps/patient/src/completion/resolvePatientAccessLink.ts` posts to that webhook
+  (`VITE_ACCESS_LINK_WEBHOOK_URL`, written by `npm run medplum:deploy-bots`). This replaces the #16
+  documented stub that always resolved `"not-found"`.
 
 - **Logging in during verification.** Built-in auth (`SignInForm`) needs a real email/password user;
   `npm run medplum:provision` only mints client-credentials for the integration harness.
@@ -102,6 +100,52 @@ npm run preview:patient       # serve the built bundle
   delivery layer, ADR-0010; default `http://localhost:3001/`). Both are documented in
   [`src/apps/coordinator/.env.example`](../../src/apps/coordinator/.env.example). Concrete
   hosting/deploy targets for the two static bundles are _TBD_ (see below).
+
+## Medplum Bots
+
+The Access-link `submit` Bot ([ADR-0005](../adr/0005-access-link-security-model.md),
+[ADR-0009](../adr/0009-bots-as-adapters-over-shared-domain-logic.md)) is the first Bot in the repo,
+so #17 established the deployment pipeline. There is no Medplum-documented "tokenized link, no
+account" pattern, so the whole thing is invented and carefully bounded.
+
+- **Runtime - VM context, self-hosted.** Bots run in-process on the local/CI Medplum via the
+  `vmcontext` runtime (`Bot.runtimeVersion: "vmcontext"`, `publicWebhook: true`). The server must set
+  `vmContextBotsEnabled: true` (in [`medplum.config.json`](../../infra/medplum/docker-compose.yml)'s
+  mounted config) **and** the project must have the `bots` feature enabled (a super-admin action).
+  The `node:vm` sandbox is not a security boundary - acceptable here because the code is our own and
+  the deployment is local/CI only.
+- **Deploy script.** `npm run medplum:deploy-bots` (`scripts/deploy-bots.ts`, idempotent):
+  1. bundles `src/packages/access-link/bot.ts` into one self-contained CommonJS module with
+     [esbuild](https://esbuild.github.io/) - with a banner mapping Node's WebCrypto onto
+     `globalThis.crypto` (the sandbox exposes `require('node:crypto')` but not a global `crypto`, and
+     token hashing is isomorphic Web Crypto) and a footer that re-exports `handler` onto the original
+     `exports` (esbuild's CJS wrapper reassigns `module.exports`, which the runner does not read);
+  2. creates the Bot **and** its scoped `AccessPolicy` **as the client-credentials app** (whose home
+     is the target project) so both are homed alongside the tokens/assignments the Bot must reach - a
+     Bot created via the admin endpoint lands in the caller's project, which for super admin is the
+     wrong one;
+  3. `$deploy`s the bundled code;
+  4. as **super admin** (`admin@example.com`/`medplum_admin` by default; override with
+     `MEDPLUM_SUPER_ADMIN_EMAIL`/`_PASSWORD`), enables the `bots` project feature and creates the
+     Bot's `ProjectMembership` with the `AccessPolicy` attached (a public Bot **must** have one; the
+     client-credentials app cannot create memberships);
+  5. writes `VITE_ACCESS_LINK_WEBHOOK_URL=<baseUrl>/webhook/<membership-id>` to
+     `src/apps/patient/.env.local` (gitignored) for the patient app.
+- **Invocation.** Unauthenticated `POST /webhook/{ProjectMembership.id}` with a JSON body
+  `{ operation: "open" | "submit", token, answers? }`. The Bot is a thin adapter (ADR-0009) over the
+  Access-link module's `openAccessLink` / `submitAccessLinkResponse`.
+- **CORS / same-origin.** Medplum does **not** send CORS headers on `/webhook` (it is a
+  server-to-server callback endpoint), so the browser cannot call it cross-origin. The patient app
+  therefore calls it **same-origin** at a relative `/webhook/*` path: the Vite dev server proxies
+  `/webhook` to Medplum (`src/apps/patient/vite.config.ts`), and a production deployment serves the
+  static bundle behind a reverse proxy that routes `/webhook` the same way (deploy target _TBD_).
+- **AccessPolicy (the security envelope, NFR-5).** Scoped so a leaked link can at most: create one
+  `QuestionnaireResponse` (create-only, no read - answers cannot be harvested), burn its own token
+  `Basic`, and complete the bound assignment `Task` (write restricted to `code=assignment`, never
+  Flags). No `Patient`/`Observation` access at all. See [security.md](security.md).
+- **Deploy/prod.** A hosted deployment would use the Medplum CLI (`medplum bot deploy`) or Lambda
+  runtime and a reviewed `AccessPolicy`, not the dev super-admin path above. _TBD with the app deploy
+  target._
 
 ## Cloud resources
 
