@@ -267,6 +267,46 @@ describeIntegration("Access-link submit/open seam (ADR-0005)", () => {
     ).toBe("submitted");
   });
 
+  it("still succeeds when Assignment completion fails - the Response is the source of truth (FR-32)", async () => {
+    const { token, assignmentId, patientId } = await anIssuedLink();
+
+    // A client that fails only the assignment `Task` update (completion), after
+    // the QR is safely created and the token burned - completion is best-effort.
+    const failingCompletion = new Proxy(medplum, {
+      get(target, prop, receiver) {
+        if (prop === "updateResource") {
+          return async (
+            resource: { resourceType?: string },
+            ...rest: unknown[]
+          ) => {
+            if (resource?.resourceType === "Task") {
+              throw new Error("injected Assignment completion failure");
+            }
+            return (target as MedplumClient).updateResource(
+              resource as never,
+              ...(rest as [])
+            );
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as MedplumClient;
+
+    const result = await submitAccessLinkResponse(failingCompletion, {
+      token,
+      answers: completeAnswers(),
+    });
+
+    // The submission succeeded: the Response landed and the link burned, even
+    // though the Assignment could not be flipped to Completed (left Pending,
+    // recoverable) - a completion hiccup never loses the patient's Response.
+    expect(result.status).toBe("submitted");
+    expect(await responsesFor(patientId)).toHaveLength(1);
+    expect((await validateAccessLink(medplum, token)).status).toBe("used");
+    expect((await getAssignment(medplum, assignmentId)).status).toBe("Pending");
+  });
+
   it("under a concurrent race, exactly one submit wins and one Response is created (ADR-0005)", async () => {
     const { token, patientId } = await anIssuedLink();
 

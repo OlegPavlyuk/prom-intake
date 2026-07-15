@@ -162,14 +162,23 @@ async function ensureBot(app: MedplumClient, code: string): Promise<Bot> {
  * token, and complete the bound Assignment - and read NO patient data. The
  * QuestionnaireResponse is create-only (no read/search), so answers cannot be
  * harvested; Task writes are restricted to assignment Tasks (never Flags); and
- * there is no Patient/Observation access at all. `Basic` (reference/token data,
- * non-PHI) is read/updatable so the Bot can load Instrument config and burn the
- * token; the real per-Assignment scoping is the token binding enforced in code.
+ * there is no Patient/Observation access at all.
+ *
+ * `Basic` is intentionally NOT criteria-scoped, unlike `Task`: the Bot reads two
+ * `Basic` types (its token + the InstrumentConfig for the completeness re-check)
+ * and their discriminating codes are private to the access-link / instrument
+ * modules, so scoping here would either leak those private codes into this script
+ * or need two overlapping criteria. `Basic` holds only non-PHI reference/token
+ * data (token records store a hash, never the raw token), so a broad read/update
+ * is an accepted, defence-in-depth-only gap - the real per-Assignment scoping is
+ * the token binding enforced in the Bot's code, and the public surface is just
+ * `{ operation, token, answers }`, not arbitrary FHIR.
  */
 async function ensureAccessPolicy(app: MedplumClient): Promise<AccessPolicy> {
   const resource: AccessPolicy["resource"] = [
     { resourceType: "QuestionnaireResponse", interaction: ["create"] },
     { resourceType: "Questionnaire", interaction: ["read", "search"] },
+    // See the docstring: non-PHI reference/token data; not criteria-scoped.
     { resourceType: "Basic", interaction: ["read", "search", "update"] },
     {
       resourceType: "Task",

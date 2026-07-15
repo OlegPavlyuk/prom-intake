@@ -185,10 +185,16 @@ export async function submitAccessLinkResponse(
     throw err;
   }
 
-  // The Response has landed: the Assignment is Completed. Completion goes through
-  // the Assignment module (never an inline Task write; ADR-0009) and is
-  // idempotent, so a later re-assertion (e.g. the scoring Bot) is harmless.
-  await completeAssignment(medplum, binding.assignmentId);
+  // The Response has landed and the token is burned - the submission has
+  // succeeded. Completing the Assignment is follow-on bookkeeping through the
+  // Assignment module (never an inline Task write; ADR-0009); it is best-effort
+  // so a transient completion failure never fails a submission whose Response is
+  // already safely stored, nor leaves the patient unable to resubmit a burned
+  // link. Completion is idempotent, so a later re-assertion recovers a Pending
+  // Assignment that has a landed Response.
+  await completeAssignment(medplum, binding.assignmentId).catch(() => {
+    // left Pending with a persisted Response - recoverable, never double-submitted
+  });
 
   return { status: "submitted", responseId };
 }

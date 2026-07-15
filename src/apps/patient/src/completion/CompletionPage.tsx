@@ -138,7 +138,10 @@ function FriendlyStatusPage({
   );
 }
 
-/** The submit phase of the form: idle, in-flight, failed (retryable), or done. */
+/**
+ * The in-flight state of the submit action: not yet sent, sending, or failed and
+ * retryable. A completed submission is a terminal page instead (see `outcome`).
+ */
 type SubmitPhase =
   | { readonly kind: "idle" }
   | { readonly kind: "submitting" }
