@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button, Center, Container, Stack, Text, Title } from "@mantine/core";
 import { getQuestionnaireAnswers } from "@medplum/core";
 import type {
@@ -72,9 +72,9 @@ export function CompletionPage({
 
   if (state.kind === "loading") {
     return (
-      <Center mih="100vh">
+      <FullPageCenter>
         <Text c="dimmed">Loading your questionnaire...</Text>
-      </Center>
+      </FullPageCenter>
     );
   }
 
@@ -83,6 +83,14 @@ export function CompletionPage({
   }
 
   return <InstrumentForm instrument={state.instrument} onSubmit={onSubmit} />;
+}
+
+function FullPageCenter({
+  children,
+}: {
+  readonly children: ReactNode;
+}): JSX.Element {
+  return <Center mih="100vh">{children}</Center>;
 }
 
 function FriendlyStatusPage({
@@ -107,14 +115,14 @@ function FriendlyStatusPage({
   const { title, body } = copy[kind];
 
   return (
-    <Center mih="100vh">
+    <FullPageCenter>
       <Container size="xs">
         <Stack gap="sm" ta="center">
           <Title order={2}>{title}</Title>
           <Text c="dimmed">{body}</Text>
         </Stack>
       </Container>
-    </Center>
+    </FullPageCenter>
   );
 }
 
