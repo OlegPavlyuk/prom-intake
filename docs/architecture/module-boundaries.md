@@ -9,16 +9,17 @@ never touch `Task`, `Observation`, or tokens directly.
 
 ## Boundaries
 
-| Module | Interface (public, domain) | Hides (private) | Seam |
-| ------ | -------------------------- | --------------- | ---- |
-| **Instrument** | load an Instrument's definition + config; expose scoring weights, severity bands, Trigger definitions | `Questionnaire` + SDC `itemWeight`; `InstrumentConfig` store | "load config for Instrument", "weights/bands/triggers for Instrument" |
-| **Assignment** | create / complete / expire an Assignment; query by patient/status | Assignment `Task` (`code=assignment`) mapping; lifecycle <-> `status`/`businessStatus` | create -> complete -> expire transitions |
-| **Access link** | issue token for an Assignment; validate + consume on submit; audit | hashed-token resource, expiry/single-use logic, `publicWebhook` Bot | issue -> open -> submit(consume) -> expired/invalid |
-| **Scoring engine** (Bot) | given a submitted Response + Instrument config -> Score + Flags | Subscription->Bot wiring, `getQuestionnaireAnswers`, idempotent creates, **`ObservationEmitter`** (internal output adapter -> `Observation`) | score(response, config) -> Observation(s) + Flag(s) |
-| **`PriorityPolicy`** | order a set of Flags per FR-24/25, ranking across Open **and** Acknowledged state | pure domain logic (no FHIR) | order(flags) -> ordered list |
-| **Worklist / Flag service** | list **unresolved Flags (Open + Acknowledged)** via `PriorityPolicy`; acknowledge; resolve(reason,note) | Flag `Task` (`code=flag`), `If-Match` claim, `412` -> `FlagAlreadyClaimed`, resolution mapping | list / acknowledge / resolve; concurrent-claim outcome |
+| Module                      | Interface (public, domain)                                                                              | Hides (private)                                                                                                                              | Seam                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **Instrument**              | load an Instrument's definition + config; expose scoring weights, severity bands, Trigger definitions   | `Questionnaire` + SDC `itemWeight`; `InstrumentConfig` store                                                                                 | "load config for Instrument", "weights/bands/triggers for Instrument" |
+| **Assignment**              | create / complete / expire an Assignment; query by patient/status                                       | Assignment `Task` (`code=assignment`) mapping; lifecycle <-> `status`/`businessStatus`                                                       | create -> complete -> expire transitions                              |
+| **Access link**             | issue token for an Assignment; validate + consume on submit; audit                                      | hashed-token resource, expiry/single-use logic, `publicWebhook` Bot                                                                          | issue -> open -> submit(consume) -> expired/invalid                   |
+| **Scoring engine** (Bot)    | given a submitted Response + Instrument config -> Score + Flags                                         | Subscription->Bot wiring, `getQuestionnaireAnswers`, idempotent creates, **`ObservationEmitter`** (internal output adapter -> `Observation`) | score(response, config) -> Observation(s) + Flag(s)                   |
+| **`PriorityPolicy`**        | order a set of Flags per FR-24/25, ranking across Open **and** Acknowledged state                       | pure domain logic (no FHIR)                                                                                                                  | order(flags) -> ordered list                                          |
+| **Worklist / Flag service** | list **unresolved Flags (Open + Acknowledged)** via `PriorityPolicy`; acknowledge; resolve(reason,note) | Flag `Task` (`code=flag`), `If-Match` claim, `412` -> `FlagAlreadyClaimed`, resolution mapping                                               | list / acknowledge / resolve; concurrent-claim outcome                |
 
 **Notes**
+
 - `ObservationEmitter` is an **internal strategy of the Scoring engine**, not a standalone module -
   it translates scoring results into `Observation`s and is the additive seam for future panel/
   item-level Observations.
@@ -37,12 +38,21 @@ never touch `Task`, `Observation`, or tokens directly.
   completes the Assignment on the fast path (#17); the Scoring Bot's completion is the recovery if
   that best-effort step did not land. Mapping the raised Flag domain object to a Flag `Task` stays the
   Flag module's concern ([ADR-0002](../adr/0002-flag-as-fhir-task.md)).
+- **`PriorityPolicy` scope today:** the pure ordering kernel landed (#20) as `PriorityPolicy.order(flags)`
+  in the `domain` package (`domain/priority.ts`) - a single deterministic query-time priority function
+  (ADR-0007) implementing FR-24/25/26: acute-risk tier first, then urgent, then routine; within a tier
+  Open before Acknowledged (so an Acknowledged acute-risk Flag still outranks any lower-tier Open Flag);
+  oldest first within a tier+state group; ties preserve input order. It ranks plain domain `Flag`
+  objects across Open **and** Acknowledged state, holds **no** FHIR and depends on nothing. Loading the
+  unresolved Flags to feed it (and excluding Resolved) is the Worklist service's concern (#21+), which
+  will consume this entry point.
 - **Worklist / Flag service scope today:** the module (`worklist` package) owns the Flag `Task`
   (`code=flag`). #19 landed its **Flag-creation seam** only - `raiseFlag`, an idempotent conditional
   create keyed on the (Response, Trigger) origin, which the Scoring Bot calls to raise a Flag without
   ever building a `Task` inline ([ADR-0002](../adr/0002-flag-as-fhir-task.md)/
-  [ADR-0009](../adr/0009-bots-as-adapters-over-shared-domain-logic.md)). Listing via `PriorityPolicy`,
-  `acknowledge`, and `resolve` are later slices (#20/#21+).
+  [ADR-0009](../adr/0009-bots-as-adapters-over-shared-domain-logic.md)). The `PriorityPolicy` it will
+  order by landed separately (#20; see its scope note above); listing through it, `acknowledge`, and
+  `resolve` are later slices (#21+).
 - The Access link is delivery only; the durable Assignment lives in the Assignment module
   ([ADR-0001](../adr/0001-assignment-as-fhir-task.md)). Swapping delivery channels never touches the
   domain.
