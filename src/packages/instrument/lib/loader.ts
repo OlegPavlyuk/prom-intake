@@ -49,6 +49,9 @@ export async function loadInstrument(
     ...(config.acuteRiskItemLinkId !== undefined
       ? { acuteRiskItemLinkId: config.acuteRiskItemLinkId }
       : {}),
+    ...(config.crisisResponse !== undefined
+      ? { crisisResponse: config.crisisResponse }
+      : {}),
   };
 }
 

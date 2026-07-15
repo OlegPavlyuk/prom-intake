@@ -4,6 +4,7 @@ import type { Instrument } from "../instrument.js";
 import {
   acuteRiskItem,
   bandForScore,
+  isAcuteRiskAnswer,
   weightFor,
 } from "../instrument-queries.js";
 
@@ -38,7 +39,17 @@ const fixture: Instrument = {
     { code: "mid", label: "Mid", minScore: 3, maxScore: 4 },
     { code: "high", label: "High", minScore: 5, maxScore: null },
   ],
-  triggers: [],
+  triggers: [
+    {
+      kind: "critical-item",
+      code: "fixture-acute-risk",
+      label: "Acute question positive",
+      priority: "acute-risk",
+      linkId: "q2",
+      atOrAboveValue: 3,
+      acuteRisk: true,
+    },
+  ],
   acuteRiskItemLinkId: "q2",
 };
 
@@ -81,5 +92,24 @@ describe("acuteRiskItem", () => {
   it("returns undefined when the Instrument defines no acute-risk item", () => {
     const noAcute: Instrument = { ...fixture, acuteRiskItemLinkId: undefined };
     expect(acuteRiskItem(noAcute)).toBeUndefined();
+  });
+});
+
+describe("isAcuteRiskAnswer", () => {
+  it("is true when the answer's weight meets the Acute-risk trigger threshold", () => {
+    expect(isAcuteRiskAnswer(fixture, "q2", "yes")).toBe(true);
+  });
+
+  it("is false when the answer's weight is below the threshold", () => {
+    expect(isAcuteRiskAnswer(fixture, "q2", "no")).toBe(false);
+  });
+
+  it("is false for an item that is not the acute-risk item", () => {
+    expect(isAcuteRiskAnswer(fixture, "q1", "some")).toBe(false);
+  });
+
+  it("is false when the Instrument defines no Acute-risk trigger", () => {
+    const noTrigger: Instrument = { ...fixture, triggers: [] };
+    expect(isAcuteRiskAnswer(noTrigger, "q2", "yes")).toBe(false);
   });
 });

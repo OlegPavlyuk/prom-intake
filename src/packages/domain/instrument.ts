@@ -101,6 +101,18 @@ export interface CriticalItemTrigger {
 export type TriggerDefinition = SeverityBandTrigger | CriticalItemTrigger;
 
 /**
+ * The informational content shown by the client-side Crisis Response (FR-15) -
+ * config-driven so content/locale can vary per Instrument without a client code
+ * change. V1 ships one default (US 988 Suicide & Crisis Lifeline).
+ */
+export interface CrisisResponseConfig {
+  /** Informational message shown alongside the crisis contact. */
+  readonly message: string;
+  /** Crisis contact number (e.g. `988`). */
+  readonly phone: string;
+}
+
+/**
  * A fully-resolved Instrument: its FHIR definition (`Questionnaire`) and its
  * project-owned config (`InstrumentConfig`) composed into one domain object.
  * This is what the Instrument module's `loadInstrument` returns and what its
@@ -129,4 +141,9 @@ export interface Instrument {
    * the Crisis Response stays config-driven rather than hard-coded.
    */
   readonly acuteRiskItemLinkId?: string;
+  /**
+   * The Crisis Response content shown on a positive acute-risk answer (FR-15),
+   * if the Instrument defines one.
+   */
+  readonly crisisResponse?: CrisisResponseConfig;
 }

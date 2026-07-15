@@ -89,4 +89,9 @@ export const PHQ9: Instrument = {
     },
   ],
   acuteRiskItemLinkId: ACUTE_RISK_LINK_ID,
+  crisisResponse: {
+    message:
+      "If you're having thoughts of harming yourself, you're not alone and help is available right now.",
+    phone: "988",
+  },
 };

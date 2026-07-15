@@ -3,7 +3,12 @@
 // kernels (scoring engine, Flag detail) compose on top of (ADR-0009), and the
 // place the "expose weights / bands / acute-risk item" behaviour is unit-tested.
 
-import type { Instrument, InstrumentItem, SeverityBand } from "./instrument.js";
+import type {
+  CriticalItemTrigger,
+  Instrument,
+  InstrumentItem,
+  SeverityBand,
+} from "./instrument.js";
 
 /**
  * Scoring weight an answer contributes for a given item, or `undefined` when the
@@ -46,4 +51,26 @@ export function acuteRiskItem(
   return instrument.items.find(
     (i) => i.linkId === instrument.acuteRiskItemLinkId
   );
+}
+
+/**
+ * Whether an answer to `linkId` meets the Instrument's Acute-risk trigger
+ * threshold (FR-15) - the check that drives the client-side Crisis Response,
+ * independent of the total Score and of whether the Response is ever
+ * submitted (the server-side Acute-risk trigger, FR-20, is a separate check).
+ */
+export function isAcuteRiskAnswer(
+  instrument: Instrument,
+  linkId: string,
+  answerCode: string
+): boolean {
+  const trigger = instrument.triggers.find(
+    (t): t is CriticalItemTrigger =>
+      t.kind === "critical-item" && t.acuteRisk && t.linkId === linkId
+  );
+  if (!trigger) {
+    return false;
+  }
+  const weight = weightFor(instrument, linkId, answerCode);
+  return weight !== undefined && weight >= trigger.atOrAboveValue;
 }

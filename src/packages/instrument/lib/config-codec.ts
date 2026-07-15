@@ -9,6 +9,7 @@
 import type { Basic, Coding, Extension } from "@medplum/fhirtypes";
 import type { LoincCoding } from "../../domain/coding.js";
 import type {
+  CrisisResponseConfig,
   Instrument,
   SeverityBand,
   TriggerDefinition,
@@ -22,6 +23,9 @@ import {
   EXT_BAND_MAX,
   EXT_BAND_MIN,
   EXT_CONFIG_ROOT,
+  EXT_CRISIS_MESSAGE,
+  EXT_CRISIS_PHONE,
+  EXT_CRISIS_RESPONSE,
   EXT_PANEL_CODE,
   EXT_QUESTIONNAIRE_URL,
   EXT_SEVERITY_BAND,
@@ -50,6 +54,7 @@ export interface ConfigPart {
   readonly severityBands: readonly SeverityBand[];
   readonly triggers: readonly TriggerDefinition[];
   readonly acuteRiskItemLinkId?: string;
+  readonly crisisResponse?: CrisisResponseConfig;
 }
 
 // --- encode -----------------------------------------------------------------
@@ -95,6 +100,16 @@ function triggerExtension(trigger: TriggerDefinition): Extension {
   return { url: EXT_TRIGGER, extension: sub };
 }
 
+function crisisResponseExtension(crisis: CrisisResponseConfig): Extension {
+  return {
+    url: EXT_CRISIS_RESPONSE,
+    extension: [
+      { url: EXT_CRISIS_MESSAGE, valueString: crisis.message },
+      { url: EXT_CRISIS_PHONE, valueString: crisis.phone },
+    ],
+  };
+}
+
 /** Build the InstrumentConfig `Basic` for an Instrument. */
 export function toBasic(instrument: Instrument): Basic {
   const payload: Extension[] = [
@@ -113,6 +128,9 @@ export function toBasic(instrument: Instrument): Basic {
       url: EXT_ACUTE_RISK_ITEM,
       valueString: instrument.acuteRiskItemLinkId,
     });
+  }
+  if (instrument.crisisResponse !== undefined) {
+    payload.push(crisisResponseExtension(instrument.crisisResponse));
   }
   for (const band of instrument.severityBands) {
     payload.push(bandExtension(band));
@@ -207,6 +225,13 @@ function decodeTrigger(ext: Extension): TriggerDefinition {
   throw new MalformedInstrumentConfigError(`unknown trigger kind "${kind}"`);
 }
 
+function decodeCrisisResponse(ext: Extension): CrisisResponseConfig {
+  return {
+    message: requireString(ext, EXT_CRISIS_MESSAGE),
+    phone: requireString(ext, EXT_CRISIS_PHONE),
+  };
+}
+
 /** Read a domain InstrumentConfig back from its `Basic` carrier. */
 export function fromBasic(basic: Basic): ConfigPart {
   const key = basic.identifier?.find(
@@ -229,6 +254,7 @@ export function fromBasic(basic: Basic): ConfigPart {
     .map(decodeTrigger);
 
   const panelCoding = subOf(root, EXT_PANEL_CODE)?.valueCoding;
+  const crisis = subOf(root, EXT_CRISIS_RESPONSE);
   return {
     key,
     questionnaireUrl: requireString(root, EXT_QUESTIONNAIRE_URL),
@@ -245,6 +271,7 @@ export function fromBasic(basic: Basic): ConfigPart {
     severityBands: bands,
     triggers,
     acuteRiskItemLinkId: subOf(root, EXT_ACUTE_RISK_ITEM)?.valueString,
+    ...(crisis ? { crisisResponse: decodeCrisisResponse(crisis) } : {}),
   };
 }
 
