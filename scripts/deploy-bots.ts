@@ -37,10 +37,12 @@ import type {
   Project,
   ProjectMembership,
   Reference,
+  Subscription,
 } from "@medplum/fhirtypes";
 import {
   CS_TASK_CODE,
   TASK_CODE_ASSIGNMENT,
+  TASK_CODE_FLAG,
 } from "../src/packages/terminology/systems.js";
 
 // MedplumClient's password login uses a browser PKCE/`sessionStorage`. Back it
@@ -53,6 +55,12 @@ globalWithStorage.sessionStorage ??= new MemoryStorage() as unknown as Storage;
 const BOT_IDENTIFIER_SYSTEM = "https://prom-intake.example/bot";
 const BOT_IDENTIFIER_VALUE = "access-link-submit";
 const ACCESS_POLICY_NAME = "Access-link submit Bot (public webhook)";
+
+// The Scoring Bot (#19): Subscription-fired (not a public webhook). It scores a
+// submitted Response and persists the Score Observation + Flag Task(s) (ADR-0004).
+const SCORING_BOT_IDENTIFIER_VALUE = "scoring";
+const SCORING_ACCESS_POLICY_NAME = "Scoring Bot (subscription-fired)";
+const SCORING_SUBSCRIPTION_CRITERIA = "QuestionnaireResponse";
 
 // The vmcontext sandbox has `require('node:crypto')` but no global `crypto`, and
 // the Access-link module hashes tokens via `globalThis.crypto.subtle` (ADR-0005,
@@ -75,8 +83,10 @@ async function main(): Promise<void> {
   }
   const baseUrl = process.env.MEDPLUM_BASE_URL ?? "http://localhost:8103/";
 
-  const code = await bundleBot();
-  console.log(`Bundled Bot code (${code.length} bytes).`);
+  const code = await bundleBot("src/packages/access-link/bot.ts");
+  console.log(`Bundled Access-link Bot code (${code.length} bytes).`);
+  const scoringCode = await bundleBot("src/packages/scoring/bot.ts");
+  console.log(`Bundled Scoring Bot code (${scoringCode.length} bytes).`);
 
   // The client-credentials app lives in the target project; create the Bot +
   // AccessPolicy through it so they are homed there (a Bot created via the admin
@@ -97,10 +107,22 @@ async function main(): Promise<void> {
   const bot = await ensureBot(app, code);
   console.log(`Bot ${bot.id} ready and deployed (vmcontext, publicWebhook).`);
 
+  const scoringPolicy = await ensureScoringAccessPolicy(app);
+  const scoringBot = await ensureScoringBot(app, scoringCode);
+  console.log(`Scoring Bot ${scoringBot.id} ready and deployed (vmcontext).`);
+
   const admin = await superAdminLogin(baseUrl);
   await enableBotsFeature(admin, projectId);
   const membership = await ensureBotMembership(admin, bot, policy, projectRef);
   console.log(`AccessPolicy attached to membership ${membership.id}.`);
+
+  // The Scoring Bot runs as itself (its own membership + AccessPolicy) and is
+  // invoked by a Subscription on QuestionnaireResponse creation, not a webhook.
+  await ensureBotMembership(admin, scoringBot, scoringPolicy, projectRef);
+  const subscription = await ensureScoringSubscription(app, scoringBot);
+  console.log(
+    `Subscription ${subscription.id} active: QuestionnaireResponse create -> Scoring Bot.`
+  );
 
   // A same-origin RELATIVE path: Medplum sends no CORS headers on `/webhook`, so
   // the patient app calls it same-origin and the dev server (or a prod reverse
@@ -113,10 +135,10 @@ async function main(): Promise<void> {
   );
 }
 
-/** Bundle bot.ts to a single CommonJS file exporting `handler` (vmcontext shape). */
-async function bundleBot(): Promise<string> {
+/** Bundle a bot.ts to a single CommonJS file exporting `handler` (vmcontext shape). */
+async function bundleBot(entryPoint: string): Promise<string> {
   const result = await build({
-    entryPoints: [resolve("src/packages/access-link/bot.ts")],
+    entryPoints: [resolve(entryPoint)],
     bundle: true,
     platform: "node",
     format: "cjs",
@@ -154,6 +176,110 @@ async function ensureBot(app: MedplumClient, code: string): Promise<Bot> {
 
   await app.post(`fhir/R4/Bot/${bot.id}/$deploy`, { code });
   return bot;
+}
+
+/** Create or reuse the Scoring Bot (vmcontext, Subscription-fired), then `$deploy`. */
+async function ensureScoringBot(
+  app: MedplumClient,
+  code: string
+): Promise<Bot> {
+  const existing = await app.searchOne("Bot", {
+    identifier: `${BOT_IDENTIFIER_SYSTEM}|${SCORING_BOT_IDENTIFIER_VALUE}`,
+  });
+  const base =
+    existing ??
+    (await app.createResource<Bot>({
+      resourceType: "Bot",
+      name: "Scoring Bot",
+      description:
+        "Subscription-fired: score a submitted Response, persist the Score Observation + Flag Task(s) (#19, ADR-0004/0009).",
+    } as Bot));
+
+  const bot = await app.updateResource({
+    ...base,
+    identifier: [
+      { system: BOT_IDENTIFIER_SYSTEM, value: SCORING_BOT_IDENTIFIER_VALUE },
+    ],
+    runtimeVersion: "vmcontext",
+  } as Bot);
+
+  await app.post(`fhir/R4/Bot/${bot.id}/$deploy`, { code });
+  return bot;
+}
+
+/**
+ * The AccessPolicy for the Scoring Bot (least privilege). Unlike the public
+ * submit Bot this is an internal, trusted actor - but it still gets only what it
+ * needs: read the Instrument (`Questionnaire` + config `Basic`) and the Response,
+ * write the Score `Observation`, create Flag `Task`s (scoped to `code=flag`), and
+ * complete the assignment `Task` it re-asserts (scoped to `code=assignment`,
+ * read/update only - never create). No Patient access - it references patients
+ * by id only.
+ */
+async function ensureScoringAccessPolicy(
+  app: MedplumClient
+): Promise<AccessPolicy> {
+  const resource: AccessPolicy["resource"] = [
+    { resourceType: "QuestionnaireResponse", interaction: ["read", "search"] },
+    { resourceType: "Questionnaire", interaction: ["read", "search"] },
+    { resourceType: "Basic", interaction: ["read", "search"] },
+    {
+      resourceType: "Observation",
+      interaction: ["read", "search", "create"],
+    },
+    {
+      resourceType: "Task",
+      criteria: `Task?code=${CS_TASK_CODE}|${TASK_CODE_FLAG}`,
+      interaction: ["read", "search", "create"],
+    },
+    {
+      resourceType: "Task",
+      criteria: `Task?code=${CS_TASK_CODE}|${TASK_CODE_ASSIGNMENT}`,
+      interaction: ["read", "search", "update"],
+    },
+  ];
+  const existing = await app.searchOne("AccessPolicy", {
+    name: SCORING_ACCESS_POLICY_NAME,
+  });
+  if (existing) {
+    return app.updateResource({ ...existing, resource });
+  }
+  return app.createResource({
+    resourceType: "AccessPolicy",
+    name: SCORING_ACCESS_POLICY_NAME,
+    resource,
+  });
+}
+
+/**
+ * Create or reuse the Subscription that invokes the Scoring Bot on every
+ * `QuestionnaireResponse` creation (ADR-0004, event-flows). Idempotent by its
+ * project identifier. The criteria stays instrument-agnostic (all QRs); the Bot
+ * resolves the Instrument from the Response and no-ops any it cannot score, so a
+ * further Instrument needs no Subscription change (config, not engine change).
+ */
+async function ensureScoringSubscription(
+  app: MedplumClient,
+  bot: Bot
+): Promise<Subscription> {
+  const endpoint = `Bot/${bot.id}`;
+  const desired: Subscription = {
+    resourceType: "Subscription",
+    status: "active",
+    reason: "Score a submitted Response and raise Flags (#19, ADR-0004).",
+    criteria: SCORING_SUBSCRIPTION_CRITERIA,
+    channel: { type: "rest-hook", endpoint },
+  };
+  // R4 Subscription has no `identifier`; find our existing one by the Bot it
+  // targets (channel endpoint) among QuestionnaireResponse subscriptions.
+  const all = await app.searchResources("Subscription", {
+    criteria: SCORING_SUBSCRIPTION_CRITERIA,
+  });
+  const existing = all.find((s) => s.channel?.endpoint === endpoint);
+  if (existing) {
+    return app.updateResource({ ...existing, ...desired, id: existing.id });
+  }
+  return app.createResource(desired);
 }
 
 /**

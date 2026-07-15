@@ -5,7 +5,11 @@
 //
 // Domain types (`Instrument`, `TriggerDefinition`, ...) live in the `domain`
 // package and are imported from there directly.
-export { loadInstrument, InstrumentNotFoundError } from "./lib/loader.js";
+export {
+  loadInstrument,
+  loadInstrumentByQuestionnaireUrl,
+  InstrumentNotFoundError,
+} from "./lib/loader.js";
 
 // Encode a loaded Instrument back to its FHIR `Questionnaire` shape. Callers
 // that already hold a resolved Instrument (rather than an authenticated

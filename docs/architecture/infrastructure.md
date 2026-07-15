@@ -147,6 +147,27 @@ account" pattern, so the whole thing is invented and carefully bounded.
   runtime and a reviewed `AccessPolicy`, not the dev super-admin path above. _TBD with the app deploy
   target._
 
+### Scoring Bot (#19, Subscription-fired)
+
+The second Bot (`src/packages/scoring/bot.ts`, [ADR-0004](../adr/0004-scoring-and-trigger-engine.md)/
+[ADR-0009](../adr/0009-bots-as-adapters-over-shared-domain-logic.md)) is deployed by the **same**
+`npm run medplum:deploy-bots` step (idempotent). Unlike the submit Bot it is **not** a public webhook -
+it is invoked by a **Subscription** on `QuestionnaireResponse` creation:
+
+- **Bot.** `vmcontext`, deployed with the same esbuild bundle pipeline as the submit Bot. It scores a
+  submitted Response and persists the results (always the Score `Observation`; a Flag `Task` per fired
+  Trigger) idempotently under at-least-once delivery.
+- **Subscription.** `criteria: QuestionnaireResponse`, `channel.type: rest-hook`, `channel.endpoint:
+  Bot/{id}`. Instrument-agnostic (the Bot resolves the Instrument from the Response and no-ops any it
+  cannot score), so onboarding another Instrument needs no Subscription change.
+- **AccessPolicy (least privilege).** Read the Instrument (`Questionnaire` + config `Basic`) and the
+  Response; create the Score `Observation`; create Flag `Task`s (scoped to `code=flag`); and
+  read/update the assignment `Task` it re-asserts complete (scoped to `code=assignment`, never
+  create). No `Patient` access - it references patients by id only. The Bot runs as itself (its own
+  `ProjectMembership` + `AccessPolicy`), a super-admin step like the submit Bot's.
+- **Invocation is internal**, so there is no CORS/webhook-path concern; nothing is written to a client
+  `.env`.
+
 ## Cloud resources
 
 _TBD - no cloud footprint yet; the local/CI Medplum is containerised. Filled when a hosted Medplum
