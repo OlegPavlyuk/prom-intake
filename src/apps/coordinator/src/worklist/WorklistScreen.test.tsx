@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Flag } from "../../../../packages/domain/workflow.js";
 import { WorklistScreen } from "./WorklistScreen";
-import type { FlagDetail, WorklistRow } from "./worklistData";
+import type { ClaimResult, FlagDetail, WorklistRow } from "./worklistData";
 
 // The Worklist UI seam (the `ui` vitest project): drive the screen through
 // injected loaders so the test asserts screen behaviour - it renders the rows in
@@ -57,6 +57,7 @@ function detail(overrides: Partial<FlagDetail> = {}): FlagDetail {
 function renderScreen(props: {
   load?: () => Promise<WorklistRow[]>;
   loadDetail?: (flagId: string) => Promise<FlagDetail>;
+  acknowledge?: (flagId: string) => Promise<ClaimResult>;
 }): void {
   render(
     <MedplumProvider medplum={new MockClient()}>
@@ -66,6 +67,12 @@ function renderScreen(props: {
     </MedplumProvider>
   );
 }
+
+/** One acute-risk Flag row whose detail opens on View. */
+const ACUTE_ROW: WorklistRow = {
+  flag: flag({ id: "flag-acute", priority: "acute-risk" }),
+  patientName: "Ada Lovelace",
+};
 
 describe("WorklistScreen", () => {
   it("renders Flags in the order the service returned them (no re-sorting)", async () => {
@@ -129,5 +136,52 @@ describe("WorklistScreen", () => {
 
     const alert = await screen.findByRole("alert");
     expect(within(alert).getByText(/network down/i)).toBeInTheDocument();
+  });
+
+  it("claims a Flag from its detail and shows the coordinator who now owns it (FR-26)", async () => {
+    const acknowledge = vi.fn().mockResolvedValue({
+      outcome: "acknowledged",
+      ownerName: "Ada Coordinator",
+    });
+    renderScreen({
+      load: () => Promise.resolve([ACUTE_ROW]),
+      loadDetail: () => Promise.resolve(detail()),
+      acknowledge,
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /view/i }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /^claim$/i })
+    );
+
+    expect(acknowledge).toHaveBeenCalledWith("flag-acute");
+    expect(
+      await screen.findByText(/claimed by ada coordinator/i)
+    ).toBeInTheDocument();
+    // The claim control gives way to the owner once claimed.
+    expect(
+      screen.queryByRole("button", { name: /^claim$/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("tells the coordinator when another already claimed the Flag (FlagAlreadyClaimed)", async () => {
+    const acknowledge = vi.fn().mockResolvedValue({
+      outcome: "already-claimed",
+      ownerName: "Grace Hopper",
+    });
+    renderScreen({
+      load: () => Promise.resolve([ACUTE_ROW]),
+      loadDetail: () => Promise.resolve(detail()),
+      acknowledge,
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /view/i }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /^claim$/i })
+    );
+
+    expect(
+      await screen.findByText(/already claimed by grace hopper/i)
+    ).toBeInTheDocument();
   });
 });

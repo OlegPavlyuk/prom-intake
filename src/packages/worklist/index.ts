@@ -7,14 +7,19 @@
 //   (Open + Acknowledged), ordered by delegating to `PriorityPolicy` (ADR-0007).
 // - `getFlag` (#21): read one Flag with its Response/Score origin, for the Flag
 //   detail's FR-29 clinical signal.
+// - `acknowledge` (#22): a coordinator claims an Open Flag single-owner under
+//   optimistic concurrency (`If-Match`); the loser gets a domain
+//   `already-claimed` outcome, never a raw `412` (ADR-0006).
 //
-// Acknowledge and resolve are later slices (#22/#23). Domain types (`Flag`) live
-// in the `domain` package.
+// Resolve is a later slice (#23). Domain types (`Flag`) live in the `domain`
+// package.
 export {
   raiseFlag,
   listWorklist,
   getFlag,
+  acknowledge,
   NotAFlagError,
   type FlagOrigin,
   type FlagRecord,
+  type AcknowledgeOutcome,
 } from "./lib/service.js";

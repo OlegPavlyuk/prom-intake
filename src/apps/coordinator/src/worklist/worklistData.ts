@@ -12,13 +12,17 @@
 // jsdom tests never re-exercise the backend modules.
 
 import type { MedplumClient } from "@medplum/core";
-import { formatHumanName } from "@medplum/core";
+import { createReference, formatHumanName } from "@medplum/core";
 import type { Patient } from "@medplum/fhirtypes";
 import type { Flag } from "../../../../packages/domain/workflow.js";
 import { bandForScore } from "../../../../packages/domain/instrument-queries.js";
 import { loadInstrumentByQuestionnaireUrl } from "../../../../packages/instrument/index.js";
 import { getResponse, getScore } from "../../../../packages/scoring/index.js";
-import { getFlag, listWorklist } from "../../../../packages/worklist/index.js";
+import {
+  acknowledge,
+  getFlag,
+  listWorklist,
+} from "../../../../packages/worklist/index.js";
 
 /** A Worklist row: a prioritized Flag with the patient's display name. */
 export interface WorklistRow {
@@ -56,7 +60,20 @@ export interface FlagDetail {
   readonly band?: { readonly code: string; readonly label: string };
   readonly triggers: readonly FiredTrigger[];
   readonly answers: readonly AnswerLine[];
+  /** Display name of the owning coordinator once the Flag is Acknowledged (FR-26). */
+  readonly ownerName?: string;
 }
+
+/**
+ * The result of claiming a Flag from the UI (FR-26): either this coordinator won
+ * the claim, or another already owns it. Both carry the owning coordinator's
+ * display name so the screen can show "Claimed by <name>" / "Already claimed by
+ * <name>". The underlying single-owner concurrency (`If-Match`, `FlagAlreadyClaimed`)
+ * lives in the Worklist module (ADR-0006); this only resolves names for display.
+ */
+export type ClaimResult =
+  | { readonly outcome: "acknowledged"; readonly ownerName: string }
+  | { readonly outcome: "already-claimed"; readonly ownerName: string };
 
 function patientName(patient: Patient): string {
   const name = patient.name?.[0];
@@ -71,6 +88,24 @@ async function patientNameById(
     return patientName(await medplum.readResource("Patient", patientId));
   } catch {
     return patientId;
+  }
+}
+
+/**
+ * Resolve a coordinator's display name from a Flag `owner` id. Coordinators
+ * authenticate as `Practitioner`s (Medplum built-in auth; FR-31), so the owner
+ * is read as one; a failed lookup degrades to the raw id rather than blocking the
+ * claim UX.
+ */
+async function coordinatorNameById(
+  medplum: MedplumClient,
+  practitionerId: string
+): Promise<string> {
+  try {
+    const p = await medplum.readResource("Practitioner", practitionerId);
+    return p.name?.[0] ? formatHumanName(p.name[0]) : practitionerId;
+  } catch {
+    return practitionerId;
   }
 }
 
@@ -116,6 +151,9 @@ export async function getFlagDetail(
   const score = await getScore(medplum, responseId);
   const total = score?.value ?? 0;
   const patientName = await patientNameById(medplum, flag.patientId);
+  const ownerName = flag.owner
+    ? await coordinatorNameById(medplum, flag.owner)
+    : undefined;
 
   const band = bandForScore(instrument, total);
 
@@ -153,5 +191,38 @@ export async function getFlagDetail(
     ...(band ? { band: { code: band.code, label: band.label } } : {}),
     triggers,
     answers,
+    ...(ownerName ? { ownerName } : {}),
   };
+}
+
+/**
+ * Claim a Flag for the signed-in coordinator (FR-26). Delegates the single-owner
+ * concurrency to the Worklist module's `acknowledge` (`If-Match`; ADR-0006) with
+ * the authenticated coordinator as owner, then resolves the owning coordinator's
+ * name for display - the winner (this coordinator) on success, or the current
+ * owner when another coordinator won the race.
+ */
+export async function acknowledgeFlag(
+  medplum: MedplumClient,
+  flagId: string
+): Promise<ClaimResult> {
+  const profile = medplum.getProfile();
+  if (!profile) {
+    throw new Error("You must be signed in to claim a Flag.");
+  }
+  const outcome = await acknowledge(
+    medplum,
+    flagId,
+    createReference(profile).reference!
+  );
+  if (outcome.outcome === "acknowledged") {
+    const ownerName = outcome.flag.owner
+      ? await coordinatorNameById(medplum, outcome.flag.owner)
+      : "you";
+    return { outcome: "acknowledged", ownerName };
+  }
+  const ownerName = outcome.owner
+    ? await coordinatorNameById(medplum, outcome.owner)
+    : "another coordinator";
+  return { outcome: "already-claimed", ownerName };
 }

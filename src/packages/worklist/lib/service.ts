@@ -5,15 +5,24 @@
 // read side that the coordinator Worklist and Flag detail consume (#21).
 // Acknowledge and resolve are later slices (#22/#23).
 
-import type { MedplumClient } from "@medplum/core";
+import { normalizeOperationOutcome, type MedplumClient } from "@medplum/core";
+import type {
+  Practitioner,
+  Provenance,
+  Reference,
+  Task,
+} from "@medplum/fhirtypes";
 import { PriorityPolicy } from "../../domain/priority.js";
 import type { Flag } from "../../domain/workflow.js";
 import type { RaisedFlag } from "../../domain/scoring.js";
 import {
   flagDedupKey,
   flagOrigin,
+  flagOwnerId,
+  flagStatusOf,
   fromFlagTask,
   isFlagTask,
+  toAcknowledgedTask,
   toFlagTask,
   type FlagOriginRefs,
 } from "./task-codec.js";
@@ -89,6 +98,101 @@ export async function getFlag(
     throw new NotAFlagError(flagId);
   }
   return { flag: fromFlagTask(task), ...flagOrigin(task) };
+}
+
+/**
+ * The outcome of a coordinator Acknowledging (claiming) a Flag - a domain result,
+ * never a raw `412` or a `Task` shape (ADR-0006). Either the claim won (the now
+ * Acknowledged Flag, with its single owner), or the Flag was already claimed (the
+ * current owner, so the UI can say "already claimed by <name>").
+ */
+export type AcknowledgeOutcome =
+  | { readonly outcome: "acknowledged"; readonly flag: Flag }
+  | { readonly outcome: "already-claimed"; readonly owner?: string };
+
+/**
+ * Acknowledge (claim) an Open Flag for a coordinator, single-owner, under
+ * optimistic concurrency (ADR-0006). The Flag transitions Open->Acknowledged
+ * (`businessStatus`; shadow `status` ready->in-progress, ADR-0003), gains the
+ * `owner`, and records the claim time in `executionPeriod.start` (KPI-computable
+ * time-to-acknowledge; data-model). A `Provenance` records the actor + timestamp
+ * (NFR-6).
+ *
+ * Concurrency: the claim is a compare-and-swap guarded by `If-Match` on the read
+ * version. Two coordinators racing the same Open Flag both read one version; the
+ * server accepts exactly one write and rejects the other with `412`, which this
+ * seam translates to `already-claimed` carrying the current owner - so a Flag
+ * never gets two owners and no HTTP status reaches callers. A Flag already past
+ * Open is likewise refused (a later, non-racing claim), guarding the case where a
+ * second coordinator reads the already-Acknowledged version.
+ *
+ * `coordinator` is the acknowledging coordinator's reference (e.g.
+ * `Practitioner/{id}`); only this module writes the Flag `Task`.
+ */
+export async function acknowledge(
+  medplum: MedplumClient,
+  flagId: string,
+  coordinator: string,
+  opts?: { now?: Date }
+): Promise<AcknowledgeOutcome> {
+  const now = opts?.now ?? new Date();
+  const owner: Reference<Practitioner> = { reference: coordinator };
+
+  const task = await medplum.readResource("Task", flagId);
+  if (!isFlagTask(task)) {
+    throw new NotAFlagError(flagId);
+  }
+  // Only an Open Flag can be claimed. One already Acknowledged (or otherwise past
+  // Open) is owned - refuse and report the current owner, so a claim that read
+  // the already-claimed version cannot overwrite the owner (the `If-Match` guard
+  // alone only stops a same-version race).
+  if (flagStatusOf(task) !== "Open") {
+    return { outcome: "already-claimed", ...ownerOf(task) };
+  }
+
+  let claimed: Task;
+  try {
+    claimed = await medplum.updateResource(
+      toAcknowledgedTask(task, owner, now.toISOString()),
+      ifMatch(task)
+    );
+  } catch (err) {
+    if (isPreconditionFailed(err)) {
+      // Lost a same-version race: another coordinator claimed it first. Re-read
+      // to report who now owns it (FlagAlreadyClaimed; ADR-0006).
+      const current = await medplum.readResource("Task", flagId);
+      return { outcome: "already-claimed", ...ownerOf(current) };
+    }
+    throw err;
+  }
+
+  // The claim won: record the transition as a Provenance (actor + timestamp) so
+  // "who claimed it, when" is answerable by query without version archaeology
+  // (NFR-1/NFR-6).
+  await medplum.createResource<Provenance>({
+    resourceType: "Provenance",
+    target: [{ reference: `Task/${flagId}` }],
+    recorded: now.toISOString(),
+    agent: [{ who: owner }],
+  });
+
+  return { outcome: "acknowledged", flag: fromFlagTask(claimed) };
+}
+
+/** The current owner of a Flag `Task` as an `already-claimed` payload. */
+function ownerOf(task: Task): { owner?: string } {
+  const owner = flagOwnerId(task);
+  return owner ? { owner } : {};
+}
+
+/** An `If-Match` on a resource's current version (optimistic lock; ADR-0006). */
+function ifMatch(resource: Task): { headers: { "If-Match": string } } {
+  return { headers: { "If-Match": `W/"${resource.meta?.versionId}"` } };
+}
+
+/** Whether an error is a `412 Precondition Failed` (a lost compare-and-swap). */
+function isPreconditionFailed(err: unknown): boolean {
+  return normalizeOperationOutcome(err).id === "precondition-failed";
 }
 
 /** Raised when a `Task` id does not identify a Flag (`code=flag`). */

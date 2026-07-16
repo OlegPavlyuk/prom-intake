@@ -1,4 +1,5 @@
 import {
+  Alert,
   Badge,
   Button,
   Card,
@@ -20,10 +21,25 @@ import type { FlagDetail } from "./worklistData";
 // `FlagDetail` (assembled by `getFlagDetail` through the module entry points) so
 // it holds no data-loading or FHIR knowledge and is trivially unit-testable.
 
+/** A message surfaced alongside the claim action (a race loss, or an error). */
+export interface ClaimNotice {
+  readonly kind: "info" | "error";
+  readonly message: string;
+}
+
 export interface FlagDetailViewProps {
   readonly detail: FlagDetail;
   /** Return to the Worklist. */
   readonly onBack: () => void;
+  /**
+   * Claim (Acknowledge) this Flag for the signed-in coordinator (FR-26). When
+   * omitted, the claim control is hidden (e.g. a Flag that is not Open).
+   */
+  readonly onAcknowledge?: () => void;
+  /** The claim is in flight (button shows a spinner, guarded against re-click). */
+  readonly claiming?: boolean;
+  /** A notice to show under the claim control (already-claimed, or an error). */
+  readonly notice?: ClaimNotice | null;
 }
 
 const PRIORITY_LABEL: Record<FlagPriority, string> = {
@@ -41,8 +57,12 @@ const STATUS_LABEL: Record<FlagStatus, string> = {
 export function FlagDetailView({
   detail,
   onBack,
+  onAcknowledge,
+  claiming,
+  notice,
 }: FlagDetailViewProps): JSX.Element {
   const { flag } = detail;
+  const isOpen = flag.status === "Open";
   return (
     <Stack maw={720} gap="lg">
       <Group justify="space-between" align="center">
@@ -69,6 +89,37 @@ export function FlagDetailView({
           {formatDateTime(detail.submittedAt)}
         </Text>
       </div>
+
+      <Card withBorder padding="lg">
+        <Group justify="space-between" align="center">
+          <div>
+            <Text size="sm" c="dimmed">
+              Ownership
+            </Text>
+            <Text fw={600}>
+              {isOpen
+                ? "Unclaimed - Open on the Worklist"
+                : `Claimed by ${detail.ownerName ?? "another coordinator"}`}
+            </Text>
+          </div>
+          {isOpen && onAcknowledge && (
+            <Button loading={claiming} onClick={onAcknowledge}>
+              Claim
+            </Button>
+          )}
+        </Group>
+        {notice && (
+          <Alert
+            mt="md"
+            color={notice.kind === "error" ? "red" : "yellow"}
+            title={
+              notice.kind === "error" ? "Could not claim this Flag" : undefined
+            }
+          >
+            {notice.message}
+          </Alert>
+        )}
+      </Card>
 
       <Card withBorder padding="lg">
         <Group justify="space-between" align="center">
