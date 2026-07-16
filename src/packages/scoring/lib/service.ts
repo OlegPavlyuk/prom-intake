@@ -23,6 +23,7 @@ import type {
 import { loadInstrumentByQuestionnaireUrl } from "../../instrument/index.js";
 import { completeAssignment } from "../../assignment/index.js";
 import { raiseFlag } from "../../worklist/index.js";
+import { LOINC } from "../../terminology/systems.js";
 import {
   scoreObservationQuery,
   toScoreObservation,
@@ -157,18 +158,94 @@ function toDomainResponse(
       "missing id or subject Patient"
     );
   }
-  const answers: ResponseAnswer[] = (response.item ?? []).flatMap((item) => {
+  return {
+    id: response.id,
+    instrumentKey,
+    patientId,
+    answers: answersOf(response),
+    submittedAt: response.authored ?? new Date().toISOString(),
+  };
+}
+
+/**
+ * The chosen option `code` per answered `linkId`, mirroring how the Response was
+ * written (questionnaire-codec). The single source of truth for item answers is
+ * the `QuestionnaireResponse` (overview); this recovers the domain answers the
+ * scoring kernel and the Flag detail both read.
+ */
+function answersOf(response: QuestionnaireResponse): ResponseAnswer[] {
+  return (response.item ?? []).flatMap((item) => {
     const answerCode = item.answer?.[0]?.valueCoding?.code;
     return item.linkId && answerCode
       ? [{ linkId: item.linkId, answerCode }]
       : [];
   });
+}
+
+/** A persisted Response read back for display (the Flag detail's FR-29 signal). */
+export interface SubmittedResponse {
+  /** Id of the `QuestionnaireResponse`. */
+  readonly id: string;
+  /** The patient the Response is about. */
+  readonly patientId: string;
+  /** Canonical URL of the Instrument's `Questionnaire`, to resolve its config. */
+  readonly questionnaireUrl: string;
+  /** ISO-8601 submission time. */
+  readonly submittedAt: string;
+  /** The chosen option `code` per answered `linkId`. */
+  readonly answers: readonly ResponseAnswer[];
+}
+
+/**
+ * Read a persisted Response (its item answers + submission time) by id. The
+ * Scoring module owns turning a `QuestionnaireResponse` into domain facts, so the
+ * Flag detail reads answers through this entry point rather than touching the
+ * resource inline (module-boundaries). Callers get domain answers, never FHIR.
+ */
+export async function getResponse(
+  medplum: MedplumClient,
+  responseId: string
+): Promise<SubmittedResponse> {
+  const qr = await medplum.readResource("QuestionnaireResponse", responseId);
+  const patientId = resolveId(qr.subject);
+  if (!qr.id || !patientId || !qr.questionnaire) {
+    throw new UnscorableResponseError(
+      qr.id,
+      "missing id, subject Patient, or questionnaire"
+    );
+  }
   return {
-    id: response.id,
-    instrumentKey,
+    id: qr.id,
     patientId,
-    answers,
-    submittedAt: response.authored ?? new Date().toISOString(),
+    questionnaireUrl: qr.questionnaire,
+    submittedAt: qr.authored ?? "",
+    answers: answersOf(qr),
+  };
+}
+
+/**
+ * Read the persisted total Score of a Response, or `undefined` when none exists.
+ * The Scoring module owns the Score `Observation` (module-boundaries), so the
+ * Flag detail reads it through this entry point. v1 writes a single total-score
+ * Observation per Response (`derivedFrom` the Response; ADR-0004), so the lookup
+ * resolves to at most one.
+ */
+export async function getScore(
+  medplum: MedplumClient,
+  responseId: string
+): Promise<PersistedScore | undefined> {
+  const [observation] = await medplum.searchResources("Observation", {
+    "derived-from": `QuestionnaireResponse/${responseId}`,
+    code: `${LOINC}|`,
+    _count: "1",
+  });
+  if (!observation?.id) {
+    return undefined;
+  }
+  return {
+    id: observation.id,
+    code: observation.code?.coding?.[0]?.code ?? "",
+    value: observation.valueInteger ?? 0,
   };
 }
 

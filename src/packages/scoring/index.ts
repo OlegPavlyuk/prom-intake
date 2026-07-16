@@ -5,9 +5,16 @@
 // live in the `domain` package; this module is the thin persistence adapter the
 // Subscription-fired Bot (`bot.ts`) calls. Callers speak domain outcomes, never
 // `Observation`/`Task` shapes.
+// `scoreResponse` is the write side (Subscription-fired Bot). `getResponse` and
+// `getScore` are the read side the coordinator Flag detail composes from (#21):
+// the module owns turning a persisted Response/Score into domain facts, so those
+// resources are read through here, never inline (module-boundaries).
 export {
   scoreResponse,
+  getResponse,
+  getScore,
   UnscorableResponseError,
   type PersistedScore,
   type ScoringOutcome,
+  type SubmittedResponse,
 } from "./lib/service.js";

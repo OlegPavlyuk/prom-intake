@@ -37,22 +37,30 @@ never touch `Task`, `Observation`, or tokens directly.
   ([ADR-0009](../adr/0009-bots-as-adapters-over-shared-domain-logic.md)). The Access-link submit path
   completes the Assignment on the fast path (#17); the Scoring Bot's completion is the recovery if
   that best-effort step did not land. Mapping the raised Flag domain object to a Flag `Task` stays the
-  Flag module's concern ([ADR-0002](../adr/0002-flag-as-fhir-task.md)).
+  Flag module's concern ([ADR-0002](../adr/0002-flag-as-fhir-task.md)). #21 added the Scoring engine's
+  **read side** for the Flag detail (FR-29): `getResponse` (a persisted Response's item answers +
+  submission time) and `getScore` (its total Score Observation). The Scoring engine is the module that
+  turns a persisted Response into scored domain facts, so it owns reading them back - the Flag detail
+  reads the answers and Score through these entry points, never by touching the
+  `QuestionnaireResponse`/`Observation` inline.
 - **`PriorityPolicy` scope today:** the pure ordering kernel landed (#20) as `PriorityPolicy.order(flags)`
   in the `domain` package (`domain/priority.ts`) - a single deterministic query-time priority function
   (ADR-0007) implementing FR-24/25/26: acute-risk tier first, then urgent, then routine; within a tier
   Open before Acknowledged (so an Acknowledged acute-risk Flag still outranks any lower-tier Open Flag);
   oldest first within a tier+state group; ties preserve input order. It ranks plain domain `Flag`
   objects across Open **and** Acknowledged state, holds **no** FHIR and depends on nothing. Loading the
-  unresolved Flags to feed it (and excluding Resolved) is the Worklist service's concern (#21+), which
-  will consume this entry point.
+  unresolved Flags to feed it (and excluding Resolved) is the Worklist service's concern, landed in #21
+  (`listWorklist`), which consumes this entry point.
 - **Worklist / Flag service scope today:** the module (`worklist` package) owns the Flag `Task`
-  (`code=flag`). #19 landed its **Flag-creation seam** only - `raiseFlag`, an idempotent conditional
+  (`code=flag`). #19 landed its **Flag-creation seam** - `raiseFlag`, an idempotent conditional
   create keyed on the (Response, Trigger) origin, which the Scoring Bot calls to raise a Flag without
   ever building a `Task` inline ([ADR-0002](../adr/0002-flag-as-fhir-task.md)/
-  [ADR-0009](../adr/0009-bots-as-adapters-over-shared-domain-logic.md)). The `PriorityPolicy` it will
-  order by landed separately (#20; see its scope note above); listing through it, `acknowledge`, and
-  `resolve` are later slices (#21+).
+  [ADR-0009](../adr/0009-bots-as-adapters-over-shared-domain-logic.md)). #21 landed the **read side**:
+  `listWorklist` returns the organization's unresolved Flags - both Open and Acknowledged - ordered by
+  delegating to `PriorityPolicy.order` (ordering is not re-implemented; ADR-0007), excluding Resolved
+  via a coded search (`Task?code=flag&status:not=completed`); and `getFlag` reads one Flag with the
+  Response/Score origin the Flag detail composes from. `acknowledge` and `resolve` (the `If-Match`
+  claim and `412 -> FlagAlreadyClaimed` translation) are later slices (#22/#23).
 - The Access link is delivery only; the durable Assignment lives in the Assignment module
   ([ADR-0001](../adr/0001-assignment-as-fhir-task.md)). Swapping delivery channels never touches the
   domain.
@@ -93,6 +101,12 @@ dependency-cruiser via the `/setup-ts-deep-modules` skill (entry-point boundary,
   authenticated `useMedplum()` client in the Coordinator app), exactly like any other consumer -
   the deep-module seam is unchanged. Nothing in `src/packages/**` may depend on `src/apps/**` or on
   React/DOM; the two apps may not import each other. Enforced by dependency-cruiser.
+  - Cross-module **composition** that a screen needs but no single module owns lives in the app at the
+    top of the graph (e.g. `assign/assignInstrument.ts`, and the Worklist's `getFlagDetail`, which
+    joins the Flag, its Response answers + Score, the Instrument config, and the Patient). Placing the
+    Flag-detail composition in the app is also what keeps it acyclic: the Scoring engine already depends
+    on the Worklist (`raiseFlag`), so the Worklist cannot depend back on the Scoring engine to read the
+    Score - the app, above both, composes them.
 - **Delivery layer.** `issueAccessLink` returns a raw token, not a URL; the **Coordinator app**
   assembles the patient-facing Access link from it. This keeps the Access-link module
   delivery-agnostic - a future SMS/email/portal channel never touches it.

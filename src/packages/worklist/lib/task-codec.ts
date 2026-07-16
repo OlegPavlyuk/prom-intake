@@ -106,6 +106,32 @@ export function toFlagTask(
   };
 }
 
+/** References tying a persisted Flag back to the Response/Score it was raised from. */
+export interface FlagOriginRefs {
+  /** Id of the `QuestionnaireResponse` the Flag was raised from. */
+  readonly responseId: string;
+  /** Reference of the Score `Observation` the Flag focuses on, if written. */
+  readonly observationRef?: string;
+}
+
+/**
+ * Read a Flag's origin (the Response it was raised from, and the Score
+ * Observation it focuses on) back from its `Task` carrier. The Flag detail
+ * composes the clinical signal from these (FR-29); only this module reads the
+ * Flag `Task`'s references.
+ */
+export function flagOrigin(task: Task): FlagOriginRefs {
+  const responseRef = (task.basedOn ?? []).find((r) =>
+    r.reference?.startsWith("QuestionnaireResponse/")
+  );
+  const responseId = responseRef ? resolveId(responseRef) : undefined;
+  if (!responseId) {
+    throw new MalformedFlagError(task.id);
+  }
+  const observationRef = task.focus?.reference;
+  return { responseId, ...(observationRef ? { observationRef } : {}) };
+}
+
 /** Read a domain Flag back from its `Task` carrier. */
 export function fromFlagTask(task: Task): Flag {
   const patientId = resolveId(task.for);

@@ -1,12 +1,16 @@
-import { AppShell, Button, Group, Title } from "@mantine/core";
+import { useState } from "react";
+import { AppShell, Button, Group, Tabs, Title } from "@mantine/core";
 import { useMedplum } from "@medplum/react";
 import { AssignScreen } from "./assign/AssignScreen";
+import { WorklistScreen } from "./worklist/WorklistScreen";
 
 // The authenticated coordinator surface: a header with a sign-out control and the
-// assign flow (#29). A single authenticated screen today, so no client-side
-// routing yet; it arrives with the Worklist (#21), the second screen.
+// two coordinator screens - assign (#29) and the Worklist (#21) - behind tabs.
+// The Worklist mounts only while its tab is active, so its data load fires when
+// the coordinator opens it, not on every page render.
 export function CoordinatorPage(): JSX.Element {
   const medplum = useMedplum();
+  const [tab, setTab] = useState<string | null>("worklist");
 
   return (
     <AppShell header={{ height: 56 }} padding="md">
@@ -24,7 +28,18 @@ export function CoordinatorPage(): JSX.Element {
         </Group>
       </AppShell.Header>
       <AppShell.Main>
-        <AssignScreen />
+        <Tabs value={tab} onChange={setTab} keepMounted={false}>
+          <Tabs.List mb="lg">
+            <Tabs.Tab value="worklist">Worklist</Tabs.Tab>
+            <Tabs.Tab value="assign">Assign</Tabs.Tab>
+          </Tabs.List>
+          <Tabs.Panel value="worklist">
+            {tab === "worklist" && <WorklistScreen />}
+          </Tabs.Panel>
+          <Tabs.Panel value="assign">
+            {tab === "assign" && <AssignScreen />}
+          </Tabs.Panel>
+        </Tabs>
       </AppShell.Main>
     </AppShell>
   );
