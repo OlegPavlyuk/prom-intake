@@ -7,7 +7,7 @@
 // Assignment codec (ADR-0003). Private to the Worklist module.
 
 import { resolveId } from "@medplum/core";
-import type { Task } from "@medplum/fhirtypes";
+import type { Practitioner, Reference, Task } from "@medplum/fhirtypes";
 import type { Flag, FlagStatus } from "../../domain/workflow.js";
 import type { FlagPriority } from "../../domain/instrument.js";
 import type { RaisedFlag } from "../../domain/scoring.js";
@@ -62,6 +62,37 @@ export function statusFields(
   return {
     status: STATUS_TO_FHIR[status],
     businessStatus: { coding: [{ system: CS_FLAG_STATUS, code: status }] },
+  };
+}
+
+/** The Flag's current lifecycle state read from its `businessStatus`. */
+export function flagStatusOf(task: Task): FlagStatus | undefined {
+  return task.businessStatus?.coding?.find((c) => c.system === CS_FLAG_STATUS)
+    ?.code as FlagStatus | undefined;
+}
+
+/** The current owner (coordinator) id of a Flag `Task`, if any. */
+export function flagOwnerId(task: Task): string | undefined {
+  return task.owner ? resolveId(task.owner) : undefined;
+}
+
+/**
+ * Apply the Acknowledge transition to an Open Flag `Task`: businessStatus
+ * Open->Acknowledged (and the shadow status ready->in-progress; ADR-0003), the
+ * single `owner`, and `executionPeriod.start` = the claim timestamp (the
+ * KPI-computable time-to-acknowledge; data-model, NFR-1). Preserves everything
+ * else so the update is a faithful state transition, not a rewrite.
+ */
+export function toAcknowledgedTask(
+  task: Task,
+  owner: Reference<Practitioner>,
+  acknowledgedAt: string
+): Task {
+  return {
+    ...task,
+    ...statusFields("Acknowledged"),
+    owner,
+    executionPeriod: { ...task.executionPeriod, start: acknowledgedAt },
   };
 }
 

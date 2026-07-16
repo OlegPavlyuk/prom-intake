@@ -3,7 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Flag } from "../../../../packages/domain/workflow.js";
-import { FlagDetailView } from "./FlagDetailView";
+import { FlagDetailView, type FlagDetailViewProps } from "./FlagDetailView";
 import type { FlagDetail } from "./worklistData";
 
 // The Flag detail's UI seam (the `ui` vitest project): render an already-composed
@@ -56,10 +56,13 @@ function detail(overrides: Partial<FlagDetail> = {}): FlagDetail {
   };
 }
 
-function renderView(d: FlagDetail, onBack = vi.fn()): void {
+function renderView(
+  d: FlagDetail,
+  props: Partial<FlagDetailViewProps> = {}
+): void {
   render(
     <MantineProvider>
-      <FlagDetailView detail={d} onBack={onBack} />
+      <FlagDetailView detail={d} onBack={vi.fn()} {...props} />
     </MantineProvider>
   );
 }
@@ -104,11 +107,49 @@ describe("FlagDetailView", () => {
 
   it("returns to the Worklist when Back is used", async () => {
     const onBack = vi.fn();
-    renderView(detail(), onBack);
+    renderView(detail(), { onBack });
 
     await userEvent.click(
       screen.getByRole("button", { name: /back to worklist/i })
     );
     expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it("offers a Claim action on an Open Flag and invokes it (FR-26)", async () => {
+    const onAcknowledge = vi.fn();
+    renderView(detail(), { onAcknowledge });
+
+    expect(screen.getByText(/unclaimed/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^claim$/i }));
+    expect(onAcknowledge).toHaveBeenCalledOnce();
+  });
+
+  it("shows the owner and no Claim action once Acknowledged (FR-26)", () => {
+    renderView(
+      detail({
+        flag: { ...ACUTE_FLAG, status: "Acknowledged" },
+        ownerName: "Grace Hopper",
+      }),
+      { onAcknowledge: vi.fn() }
+    );
+
+    expect(screen.getByText(/claimed by grace hopper/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^claim$/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("surfaces an already-claimed notice", () => {
+    renderView(
+      detail({
+        flag: { ...ACUTE_FLAG, status: "Acknowledged" },
+        ownerName: "Grace Hopper",
+      }),
+      { notice: { kind: "info", message: "Already claimed by Grace Hopper." } }
+    );
+
+    expect(
+      screen.getByText(/already claimed by grace hopper/i)
+    ).toBeInTheDocument();
   });
 });

@@ -59,8 +59,18 @@ never touch `Task`, `Observation`, or tokens directly.
   `listWorklist` returns the organization's unresolved Flags - both Open and Acknowledged - ordered by
   delegating to `PriorityPolicy.order` (ordering is not re-implemented; ADR-0007), excluding Resolved
   via a coded search (`Task?code=flag&status:not=completed`); and `getFlag` reads one Flag with the
-  Response/Score origin the Flag detail composes from. `acknowledge` and `resolve` (the `If-Match`
-  claim and `412 -> FlagAlreadyClaimed` translation) are later slices (#22/#23).
+  Response/Score origin the Flag detail composes from. #22 landed the **single-owner claim**:
+  `acknowledge` transitions an Open Flag to Acknowledged (`businessStatus` Open->Acknowledged; shadow
+  `status` ready->in-progress, ADR-0003) for one coordinator, under **optimistic concurrency** - a
+  compare-and-swap guarded by `If-Match` on the read version (ADR-0006). It also refuses a claim on a
+  Flag already past Open (a later, non-racing second claim reading the Acknowledged version), so a
+  Flag never gets two owners. The lost race's `412` is translated **inside the module** to a domain
+  outcome (`already-claimed`, carrying the current owner) - no raw `412` or `Task` shape reaches
+  callers/UI. The claim sets `executionPeriod.start` (the KPI-computable time-to-acknowledge;
+  data-model, NFR-1) and writes a `Provenance` recording the actor + timestamp (NFR-6). The Provenance
+  is the one FHIR resource this module writes beyond the Flag `Task`; it has no domain read-back seam,
+  so it is asserted directly in the integration test. `resolve` (same `If-Match` pattern, plus the
+  Resolution reason + note) is the remaining slice (#23).
 - The Access link is delivery only; the durable Assignment lives in the Assignment module
   ([ADR-0001](../adr/0001-assignment-as-fhir-task.md)). Swapping delivery channels never touches the
   domain.

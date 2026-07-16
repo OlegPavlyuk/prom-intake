@@ -15,12 +15,14 @@ import { formatDateTime } from "@medplum/core";
 import { useMedplum } from "@medplum/react";
 import type { FlagPriority } from "../../../../packages/domain/instrument.js";
 import {
+  acknowledgeFlag,
   getFlagDetail,
   loadWorklist,
+  type ClaimResult,
   type FlagDetail,
   type WorklistRow,
 } from "./worklistData";
-import { FlagDetailView } from "./FlagDetailView";
+import { FlagDetailView, type ClaimNotice } from "./FlagDetailView";
 
 // The coordinator Worklist screen (FR-23/24/25): the shared, prioritized list of
 // unresolved Flags, and - on selecting one - the FR-29 Flag detail. It trusts the
@@ -34,6 +36,8 @@ export interface WorklistScreenProps {
   readonly load?: () => Promise<WorklistRow[]>;
   /** Load one Flag's FR-29 detail (defaults to the authenticated client). */
   readonly loadDetail?: (flagId: string) => Promise<FlagDetail>;
+  /** Claim a Flag for the signed-in coordinator (defaults to the authenticated client). */
+  readonly acknowledge?: (flagId: string) => Promise<ClaimResult>;
 }
 
 const PRIORITY_LABEL: Record<FlagPriority, string> = {
@@ -49,6 +53,7 @@ function errorMessage(err: unknown): string {
 export function WorklistScreen({
   load,
   loadDetail,
+  acknowledge,
 }: WorklistScreenProps): JSX.Element {
   const medplum = useMedplum();
   const doLoad = useCallback(
@@ -60,11 +65,18 @@ export function WorklistScreen({
       (loadDetail ?? ((id: string) => getFlagDetail(medplum, id)))(flagId),
     [loadDetail, medplum]
   );
+  const doAcknowledge = useCallback(
+    (flagId: string) =>
+      (acknowledge ?? ((id: string) => acknowledgeFlag(medplum, id)))(flagId),
+    [acknowledge, medplum]
+  );
 
   const [rows, setRows] = useState<WorklistRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<FlagDetail | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const [notice, setNotice] = useState<ClaimNotice | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -81,6 +93,7 @@ export function WorklistScreen({
   async function openFlag(flagId: string): Promise<void> {
     setOpeningId(flagId);
     setError(null);
+    setNotice(null);
     try {
       setDetail(await doLoadDetail(flagId));
     } catch (err) {
@@ -90,8 +103,46 @@ export function WorklistScreen({
     }
   }
 
+  async function claimFlag(): Promise<void> {
+    if (!detail) return;
+    setClaiming(true);
+    setNotice(null);
+    try {
+      const result = await doAcknowledge(detail.flag.id);
+      // Both outcomes leave the Flag Acknowledged and owned; reflect that so the
+      // claim control gives way to the owner, and tell the coordinator if someone
+      // else won the race (FlagAlreadyClaimed; ADR-0006).
+      setDetail({
+        ...detail,
+        flag: { ...detail.flag, status: "Acknowledged" },
+        ownerName: result.ownerName,
+      });
+      if (result.outcome === "already-claimed") {
+        setNotice({
+          kind: "info",
+          message: `Already claimed by ${result.ownerName}.`,
+        });
+      }
+    } catch (err) {
+      setNotice({ kind: "error", message: errorMessage(err) });
+    } finally {
+      setClaiming(false);
+    }
+  }
+
   if (detail) {
-    return <FlagDetailView detail={detail} onBack={() => setDetail(null)} />;
+    return (
+      <FlagDetailView
+        detail={detail}
+        onBack={() => {
+          setDetail(null);
+          setNotice(null);
+        }}
+        onAcknowledge={() => void claimFlag()}
+        claiming={claiming}
+        notice={notice}
+      />
+    );
   }
 
   return (
