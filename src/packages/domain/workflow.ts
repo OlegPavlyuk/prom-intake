@@ -27,6 +27,16 @@ export type ResolutionReason =
   | "duplicate-invalid"
   | "other";
 
+/**
+ * The structured reason a coordinator records when resolving a Flag (FR-28): a
+ * predefined `ResolutionReason` plus an optional free-text note. A note is
+ * mandatory when the reason is `other` (enforced by the Worklist service).
+ */
+export interface Resolution {
+  readonly reason: ResolutionReason;
+  readonly note?: string;
+}
+
 /** One patient's answer to one item within a Response. */
 export interface ResponseAnswer {
   readonly linkId: string;
@@ -92,8 +102,5 @@ export interface Flag {
   /** Owning coordinator once Acknowledged. */
   readonly owner?: string;
   /** Structured reason recorded on resolution (FR-28). */
-  readonly resolution?: {
-    readonly reason: ResolutionReason;
-    readonly note?: string;
-  };
+  readonly resolution?: Resolution;
 }

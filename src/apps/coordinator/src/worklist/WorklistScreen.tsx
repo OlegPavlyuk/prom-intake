@@ -14,12 +14,15 @@ import {
 import { formatDateTime } from "@medplum/core";
 import { useMedplum } from "@medplum/react";
 import type { FlagPriority } from "../../../../packages/domain/instrument.js";
+import type { Resolution } from "../../../../packages/domain/workflow.js";
 import {
   acknowledgeFlag,
   getFlagDetail,
   loadWorklist,
+  resolveFlag,
   type ClaimResult,
   type FlagDetail,
+  type ResolveResult,
   type WorklistRow,
 } from "./worklistData";
 import { FlagDetailView, type ClaimNotice } from "./FlagDetailView";
@@ -38,6 +41,11 @@ export interface WorklistScreenProps {
   readonly loadDetail?: (flagId: string) => Promise<FlagDetail>;
   /** Claim a Flag for the signed-in coordinator (defaults to the authenticated client). */
   readonly acknowledge?: (flagId: string) => Promise<ClaimResult>;
+  /** Resolve a Flag for the signed-in coordinator (defaults to the authenticated client). */
+  readonly resolve?: (
+    flagId: string,
+    resolution: Resolution
+  ) => Promise<ResolveResult>;
 }
 
 const PRIORITY_LABEL: Record<FlagPriority, string> = {
@@ -54,6 +62,7 @@ export function WorklistScreen({
   load,
   loadDetail,
   acknowledge,
+  resolve,
 }: WorklistScreenProps): JSX.Element {
   const medplum = useMedplum();
   const doLoad = useCallback(
@@ -70,6 +79,14 @@ export function WorklistScreen({
       (acknowledge ?? ((id: string) => acknowledgeFlag(medplum, id)))(flagId),
     [acknowledge, medplum]
   );
+  const doResolve = useCallback(
+    (flagId: string, resolution: Resolution) =>
+      (resolve ?? ((id: string, r: Resolution) => resolveFlag(medplum, id, r)))(
+        flagId,
+        resolution
+      ),
+    [resolve, medplum]
+  );
 
   const [rows, setRows] = useState<WorklistRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +94,9 @@ export function WorklistScreen({
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [claiming, setClaiming] = useState(false);
   const [notice, setNotice] = useState<ClaimNotice | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const [resolveNotice, setResolveNotice] = useState<ClaimNotice | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -88,7 +108,7 @@ export function WorklistScreen({
     return () => {
       live = false;
     };
-  }, [doLoad]);
+  }, [doLoad, reloadKey]);
 
   async function openFlag(flagId: string): Promise<void> {
     setOpeningId(flagId);
@@ -130,6 +150,24 @@ export function WorklistScreen({
     }
   }
 
+  async function resolveDetail(resolution: Resolution): Promise<void> {
+    if (!detail) return;
+    setResolving(true);
+    setResolveNotice(null);
+    try {
+      await doResolve(detail.flag.id, resolution);
+      // Both outcomes (resolved / already-resolved) mean the Flag has left the
+      // active Worklist. Return to the list and refresh so it disappears.
+      setDetail(null);
+      setNotice(null);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      setResolveNotice({ kind: "error", message: errorMessage(err) });
+    } finally {
+      setResolving(false);
+    }
+  }
+
   if (detail) {
     return (
       <FlagDetailView
@@ -137,10 +175,14 @@ export function WorklistScreen({
         onBack={() => {
           setDetail(null);
           setNotice(null);
+          setResolveNotice(null);
         }}
         onAcknowledge={() => void claimFlag()}
         claiming={claiming}
         notice={notice}
+        onResolve={(resolution) => void resolveDetail(resolution)}
+        resolving={resolving}
+        resolveNotice={resolveNotice}
       />
     );
   }

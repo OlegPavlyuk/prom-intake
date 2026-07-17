@@ -13,7 +13,7 @@ import type {
   Task,
 } from "@medplum/fhirtypes";
 import { PriorityPolicy } from "../../domain/priority.js";
-import type { Flag } from "../../domain/workflow.js";
+import type { Flag, Resolution } from "../../domain/workflow.js";
 import type { RaisedFlag } from "../../domain/scoring.js";
 import {
   flagDedupKey,
@@ -24,9 +24,15 @@ import {
   isFlagTask,
   toAcknowledgedTask,
   toFlagTask,
+  toResolvedTask,
   type FlagOriginRefs,
 } from "./task-codec.js";
-import { CS_TASK_CODE, ID_FLAG_DEDUP_KEY, TASK_CODE_FLAG } from "./urls.js";
+import {
+  CS_RESOLUTION_REASON,
+  CS_TASK_CODE,
+  ID_FLAG_DEDUP_KEY,
+  TASK_CODE_FLAG,
+} from "./urls.js";
 
 /** References tying a raised Flag to the Response/Score that produced it. */
 export interface FlagOrigin {
@@ -179,6 +185,94 @@ export async function acknowledge(
   return { outcome: "acknowledged", flag: fromFlagTask(claimed) };
 }
 
+/**
+ * The outcome of a coordinator Resolving a Flag - a domain result, never a raw
+ * `412` or a `Task` shape (ADR-0006). Either the resolve won (the now Resolved
+ * Flag with its structured resolution), or the Flag was already resolved (the
+ * standing resolution, so a later resolve cannot overwrite the recorded reason).
+ */
+export type ResolveOutcome =
+  | { readonly outcome: "resolved"; readonly flag: Flag }
+  | { readonly outcome: "already-resolved"; readonly flag: Flag };
+
+/**
+ * Resolve a Flag with a structured reason (+ optional note), the Flag's terminal
+ * single-writer transition (FR-27/28). The Flag moves ->Resolved (`businessStatus`;
+ * shadow `status` ->completed, ADR-0003), so `listWorklist` no longer returns it -
+ * it leaves the active Worklist without a hard delete; the `Task` and its history
+ * are retained (FR-30). The resolve timestamp is recorded in `executionPeriod.end`
+ * (KPI-computable time-to-resolve; data-model), and a `Provenance` records the
+ * actor + timestamp + the resolution reason (NFR-1/NFR-6). Resolving is allowed
+ * from either Open or Acknowledged - a coordinator need not claim a Flag first.
+ *
+ * A note is mandatory when the reason is `other` (FR-28); this is refused with a
+ * {@link ResolutionNoteRequiredError} before any write.
+ *
+ * Concurrency: like Acknowledge, the transition is a compare-and-swap guarded by
+ * `If-Match` on the read version (ADR-0006). A Flag already Resolved is refused
+ * (its standing resolution reported as `already-resolved`), and a lost same-version
+ * race is likewise translated to `already-resolved` - so the first reason stands
+ * and no HTTP status reaches callers.
+ *
+ * `coordinator` is the resolving coordinator's reference (e.g. `Practitioner/{id}`);
+ * only this module writes the Flag `Task`.
+ */
+export async function resolve(
+  medplum: MedplumClient,
+  flagId: string,
+  resolution: Resolution,
+  coordinator: string,
+  opts?: { now?: Date }
+): Promise<ResolveOutcome> {
+  if (resolution.reason === "other" && !resolution.note?.trim()) {
+    throw new ResolutionNoteRequiredError(flagId);
+  }
+  const now = opts?.now ?? new Date();
+  const actor: Reference<Practitioner> = { reference: coordinator };
+
+  const task = await medplum.readResource("Task", flagId);
+  if (!isFlagTask(task)) {
+    throw new NotAFlagError(flagId);
+  }
+  // A Flag already Resolved is terminal - refuse and report the standing
+  // resolution, so a later resolve cannot overwrite the recorded reason (the
+  // `If-Match` guard alone only stops a same-version race).
+  if (flagStatusOf(task) === "Resolved") {
+    return { outcome: "already-resolved", flag: fromFlagTask(task) };
+  }
+
+  let resolved: Task;
+  try {
+    resolved = await medplum.updateResource(
+      toResolvedTask(task, resolution, now.toISOString()),
+      ifMatch(task)
+    );
+  } catch (err) {
+    if (isPreconditionFailed(err)) {
+      // Lost a same-version race: another coordinator resolved it first. Re-read
+      // to report the standing resolution (the first reason wins; ADR-0006).
+      const current = await medplum.readResource("Task", flagId);
+      return { outcome: "already-resolved", flag: fromFlagTask(current) };
+    }
+    throw err;
+  }
+
+  // The resolve won: record the transition as a Provenance (actor + timestamp +
+  // resolution reason) so "who resolved it, when, and why" is answerable by query
+  // without version archaeology (NFR-1/NFR-6).
+  await medplum.createResource<Provenance>({
+    resourceType: "Provenance",
+    target: [{ reference: `Task/${flagId}` }],
+    recorded: now.toISOString(),
+    agent: [{ who: actor }],
+    reason: [
+      { coding: [{ system: CS_RESOLUTION_REASON, code: resolution.reason }] },
+    ],
+  });
+
+  return { outcome: "resolved", flag: fromFlagTask(resolved) };
+}
+
 /** The current owner of a Flag `Task` as an `already-claimed` payload. */
 function ownerOf(task: Task): { owner?: string } {
   const owner = flagOwnerId(task);
@@ -200,5 +294,13 @@ export class NotAFlagError extends Error {
   constructor(id: string) {
     super(`Task "${id}" is not a Flag`);
     this.name = "NotAFlagError";
+  }
+}
+
+/** Raised when resolving with reason `other` but no free-text note (FR-28). */
+export class ResolutionNoteRequiredError extends Error {
+  constructor(id: string) {
+    super(`Resolving Flag "${id}" with reason "other" requires a note`);
+    this.name = "ResolutionNoteRequiredError";
   }
 }

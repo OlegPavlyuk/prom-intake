@@ -4,9 +4,14 @@ import { MedplumProvider } from "@medplum/react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { Flag } from "../../../../packages/domain/workflow.js";
+import type { Flag, Resolution } from "../../../../packages/domain/workflow.js";
 import { WorklistScreen } from "./WorklistScreen";
-import type { ClaimResult, FlagDetail, WorklistRow } from "./worklistData";
+import type {
+  ClaimResult,
+  FlagDetail,
+  ResolveResult,
+  WorklistRow,
+} from "./worklistData";
 
 // The Worklist UI seam (the `ui` vitest project): drive the screen through
 // injected loaders so the test asserts screen behaviour - it renders the rows in
@@ -58,6 +63,7 @@ function renderScreen(props: {
   load?: () => Promise<WorklistRow[]>;
   loadDetail?: (flagId: string) => Promise<FlagDetail>;
   acknowledge?: (flagId: string) => Promise<ClaimResult>;
+  resolve?: (flagId: string, resolution: Resolution) => Promise<ResolveResult>;
 }): void {
   render(
     <MedplumProvider medplum={new MockClient()}>
@@ -183,5 +189,39 @@ describe("WorklistScreen", () => {
     expect(
       await screen.findByText(/already claimed by grace hopper/i)
     ).toBeInTheDocument();
+  });
+
+  it("resolves a Flag from its detail and it leaves the Worklist (FR-27)", async () => {
+    const resolve = vi.fn().mockResolvedValue({ outcome: "resolved" });
+    // The list holds the Flag before resolving, and is empty on the refresh
+    // after - the resolved Flag has left the active Worklist.
+    const load = vi
+      .fn<() => Promise<WorklistRow[]>>()
+      .mockResolvedValueOnce([ACUTE_ROW])
+      .mockResolvedValueOnce([]);
+    renderScreen({
+      load,
+      loadDetail: () =>
+        Promise.resolve(
+          detail({ flag: flag({ id: "flag-acute", status: "Acknowledged" }) })
+        ),
+      resolve,
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /view/i }));
+    await userEvent.click(screen.getByPlaceholderText(/select a reason/i));
+    await userEvent.click(
+      await screen.findByRole("option", { name: /contacted patient/i })
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /resolve flag/i })
+    );
+
+    expect(resolve).toHaveBeenCalledWith("flag-acute", {
+      reason: "contacted-patient",
+    });
+    // Back on the (refreshed) list, which is now clear.
+    expect(await screen.findByText(/no unresolved flags/i)).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(2);
   });
 });

@@ -6,6 +6,7 @@ export {
   PROJECT_BASE,
   CS_TASK_CODE,
   CS_FLAG_STATUS,
+  CS_RESOLUTION_REASON,
   TASK_CODE_FLAG,
 } from "../../terminology/systems.js";
 

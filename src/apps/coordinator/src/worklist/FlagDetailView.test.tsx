@@ -152,4 +152,73 @@ describe("FlagDetailView", () => {
       screen.getByText(/already claimed by grace hopper/i)
     ).toBeInTheDocument();
   });
+
+  it("resolves with a selected reason and passes it up (FR-27/28)", async () => {
+    const onResolve = vi.fn();
+    renderView(detail({ flag: { ...ACUTE_FLAG, status: "Acknowledged" } }), {
+      onResolve,
+    });
+
+    // Pick a reason, then resolve.
+    await userEvent.click(screen.getByPlaceholderText(/select a reason/i));
+    await userEvent.click(
+      screen.getByRole("option", { name: /contacted patient/i })
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /resolve flag/i })
+    );
+
+    expect(onResolve).toHaveBeenCalledWith({ reason: "contacted-patient" });
+  });
+
+  it("requires a note when the reason is Other (FR-28)", async () => {
+    const onResolve = vi.fn();
+    renderView(detail({ flag: { ...ACUTE_FLAG, status: "Acknowledged" } }), {
+      onResolve,
+    });
+
+    await userEvent.click(screen.getByPlaceholderText(/select a reason/i));
+    await userEvent.click(screen.getByRole("option", { name: /^other/i }));
+
+    // With "Other" and no note, the Resolve button stays disabled.
+    const resolveButton = screen.getByRole("button", { name: /resolve flag/i });
+    expect(resolveButton).toBeDisabled();
+
+    // Adding a note enables it, and the note is passed up.
+    await userEvent.type(
+      screen.getByPlaceholderText(/add context for this resolution/i),
+      "Seen in clinic today."
+    );
+    expect(resolveButton).toBeEnabled();
+    await userEvent.click(resolveButton);
+    expect(onResolve).toHaveBeenCalledWith({
+      reason: "other",
+      note: "Seen in clinic today.",
+    });
+  });
+
+  it("shows the recorded resolution and no resolve form once Resolved (FR-30)", () => {
+    renderView(
+      detail({
+        flag: {
+          ...ACUTE_FLAG,
+          status: "Resolved",
+          resolvedAt: "2026-07-16T12:00:00.000Z",
+          resolution: {
+            reason: "referred-to-clinician",
+            note: "Escalated to on-call clinician.",
+          },
+        },
+      }),
+      { onResolve: vi.fn() }
+    );
+
+    expect(screen.getByText(/referred to clinician/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/escalated to on-call clinician/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /resolve flag/i })
+    ).not.toBeInTheDocument();
+  });
 });
