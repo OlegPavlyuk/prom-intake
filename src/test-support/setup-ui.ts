@@ -28,3 +28,13 @@ Object.defineProperty(window, "matchMedia", {
       dispatchEvent: vi.fn(),
     }) as unknown as MediaQueryList,
 });
+
+// jsdom has no ResizeObserver; Mantine's ScrollArea (used by Select/dropdown
+// popovers) constructs one on mount.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  } as unknown as typeof ResizeObserver;
+}

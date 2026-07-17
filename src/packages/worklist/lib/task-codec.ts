@@ -8,11 +8,17 @@
 
 import { resolveId } from "@medplum/core";
 import type { Practitioner, Reference, Task } from "@medplum/fhirtypes";
-import type { Flag, FlagStatus } from "../../domain/workflow.js";
+import type {
+  Flag,
+  FlagStatus,
+  Resolution,
+  ResolutionReason,
+} from "../../domain/workflow.js";
 import type { FlagPriority } from "../../domain/instrument.js";
 import type { RaisedFlag } from "../../domain/scoring.js";
 import {
   CS_FLAG_STATUS,
+  CS_RESOLUTION_REASON,
   CS_TASK_CODE,
   ID_FLAG_DEDUP_KEY,
   SYS_TRIGGER_CODE,
@@ -94,6 +100,46 @@ export function toAcknowledgedTask(
     owner,
     executionPeriod: { ...task.executionPeriod, start: acknowledgedAt },
   };
+}
+
+/**
+ * Apply the Resolve transition to a Flag `Task`: businessStatus ->Resolved (and
+ * the shadow status ->completed, so the Flag drops off the active Worklist query;
+ * ADR-0003), the structured resolution (`statusReason` = the reason coding, an
+ * appended `note` when present; FR-28), and `executionPeriod.end` = the resolve
+ * timestamp (the KPI-computable time-to-resolve; data-model, NFR-1). Preserves
+ * everything else - including the `owner` and `executionPeriod.start` from an
+ * earlier Acknowledge - so the update is a faithful terminal transition, not a
+ * rewrite (FR-30: history is retained, never overwritten away).
+ */
+export function toResolvedTask(
+  task: Task,
+  resolution: Resolution,
+  resolvedAt: string
+): Task {
+  return {
+    ...task,
+    ...statusFields("Resolved"),
+    statusReason: {
+      coding: [{ system: CS_RESOLUTION_REASON, code: resolution.reason }],
+    },
+    executionPeriod: { ...task.executionPeriod, end: resolvedAt },
+    ...(resolution.note
+      ? { note: [...(task.note ?? []), { text: resolution.note }] }
+      : {}),
+  };
+}
+
+/** The structured resolution read back from a Resolved Flag `Task`, if any. */
+export function resolutionOf(task: Task): Resolution | undefined {
+  const reason = task.statusReason?.coding?.find(
+    (c) => c.system === CS_RESOLUTION_REASON
+  )?.code as ResolutionReason | undefined;
+  if (!reason) {
+    return undefined;
+  }
+  const note = task.note?.find((n) => n.text)?.text;
+  return { reason, ...(note ? { note } : {}) };
 }
 
 /**
@@ -179,6 +225,7 @@ export function fromFlagTask(task: Task): Flag {
     .filter((c) => c.system === SYS_TRIGGER_CODE && c.code)
     .map((c) => c.code!);
   const owner = task.owner ? resolveId(task.owner) : undefined;
+  const resolution = resolutionOf(task);
 
   return {
     id: task.id,
@@ -194,6 +241,7 @@ export function fromFlagTask(task: Task): Flag {
       ? { resolvedAt: task.executionPeriod.end }
       : {}),
     ...(owner ? { owner } : {}),
+    ...(resolution ? { resolution } : {}),
   };
 }
 

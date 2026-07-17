@@ -10,16 +10,22 @@
 // - `acknowledge` (#22): a coordinator claims an Open Flag single-owner under
 //   optimistic concurrency (`If-Match`); the loser gets a domain
 //   `already-claimed` outcome, never a raw `412` (ADR-0006).
+// - `resolve` (#23): a coordinator resolves a Flag with a structured reason
+//   (+ optional note), the terminal transition that drops it from the active
+//   Worklist while retaining history (FR-27/28/30). Reuses the same
+//   optimistic-concurrency pattern; a later resolve gets `already-resolved`.
 //
-// Resolve is a later slice (#23). Domain types (`Flag`) live in the `domain`
-// package.
+// Domain types (`Flag`, `Resolution`) live in the `domain` package.
 export {
   raiseFlag,
   listWorklist,
   getFlag,
   acknowledge,
+  resolve,
   NotAFlagError,
+  ResolutionNoteRequiredError,
   type FlagOrigin,
   type FlagRecord,
   type AcknowledgeOutcome,
+  type ResolveOutcome,
 } from "./lib/service.js";

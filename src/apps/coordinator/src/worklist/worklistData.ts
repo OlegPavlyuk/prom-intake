@@ -14,7 +14,7 @@
 import type { MedplumClient } from "@medplum/core";
 import { createReference, formatHumanName } from "@medplum/core";
 import type { Patient } from "@medplum/fhirtypes";
-import type { Flag } from "../../../../packages/domain/workflow.js";
+import type { Flag, Resolution } from "../../../../packages/domain/workflow.js";
 import { bandForScore } from "../../../../packages/domain/instrument-queries.js";
 import { loadInstrumentByQuestionnaireUrl } from "../../../../packages/instrument/index.js";
 import { getResponse, getScore } from "../../../../packages/scoring/index.js";
@@ -22,6 +22,7 @@ import {
   acknowledge,
   getFlag,
   listWorklist,
+  resolve,
 } from "../../../../packages/worklist/index.js";
 
 /** A Worklist row: a prioritized Flag with the patient's display name. */
@@ -74,6 +75,16 @@ export interface FlagDetail {
 export type ClaimResult =
   | { readonly outcome: "acknowledged"; readonly ownerName: string }
   | { readonly outcome: "already-claimed"; readonly ownerName: string };
+
+/**
+ * The result of resolving a Flag from the UI (FR-27/28): either this coordinator
+ * resolved it, or it was already resolved by someone else. Both mean the Flag has
+ * left the active Worklist; the screen refreshes the list so it disappears. The
+ * underlying terminal transition + optimistic concurrency lives in the Worklist
+ * module (ADR-0003/0006).
+ */
+export type ResolveResult =
+  { readonly outcome: "resolved" } | { readonly outcome: "already-resolved" };
 
 function patientName(patient: Patient): string {
   const name = patient.name?.[0];
@@ -225,4 +236,30 @@ export async function acknowledgeFlag(
     ? await coordinatorNameById(medplum, outcome.owner)
     : "another coordinator";
   return { outcome: "already-claimed", ownerName };
+}
+
+/**
+ * Resolve a Flag with a structured reason (+ optional note) for the signed-in
+ * coordinator (FR-27/28). Delegates the terminal transition to the Worklist
+ * module's `resolve` (`If-Match`; ADR-0003/0006) with the authenticated
+ * coordinator as the resolving actor. The `other`-requires-a-note rule is
+ * enforced by the module; the UI also guards it so the coordinator sees it before
+ * submitting.
+ */
+export async function resolveFlag(
+  medplum: MedplumClient,
+  flagId: string,
+  resolution: Resolution
+): Promise<ResolveResult> {
+  const profile = medplum.getProfile();
+  if (!profile) {
+    throw new Error("You must be signed in to resolve a Flag.");
+  }
+  const outcome = await resolve(
+    medplum,
+    flagId,
+    resolution,
+    createReference(profile).reference!
+  );
+  return { outcome: outcome.outcome };
 }

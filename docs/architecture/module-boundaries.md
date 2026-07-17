@@ -67,10 +67,21 @@ never touch `Task`, `Observation`, or tokens directly.
   Flag never gets two owners. The lost race's `412` is translated **inside the module** to a domain
   outcome (`already-claimed`, carrying the current owner) - no raw `412` or `Task` shape reaches
   callers/UI. The claim sets `executionPeriod.start` (the KPI-computable time-to-acknowledge;
-  data-model, NFR-1) and writes a `Provenance` recording the actor + timestamp (NFR-6). The Provenance
-  is the one FHIR resource this module writes beyond the Flag `Task`; it has no domain read-back seam,
-  so it is asserted directly in the integration test. `resolve` (same `If-Match` pattern, plus the
-  Resolution reason + note) is the remaining slice (#23).
+  data-model, NFR-1) and writes a `Provenance` recording the actor + timestamp (NFR-6). #23 landed the
+  **terminal transition**: `resolve` moves a Flag (from Open **or** Acknowledged) to Resolved
+  (`businessStatus` ->Resolved; shadow `status` ->completed, ADR-0003), so `listWorklist` no longer
+  returns it - the Flag leaves the active Worklist **without a hard delete**; the `Task` and its history
+  are retained (FR-30). It records the structured resolution on the `Task` - the reason on `statusReason`
+  (from the `resolution-reason` CodeSystem) and the optional note appended to `Task.note` (FR-28; `other`
+  requires a note, refused with `ResolutionNoteRequiredError` before any write) - sets
+  `executionPeriod.end` (the KPI-computable time-to-resolve; data-model, NFR-1), and writes a
+  `Provenance` recording the actor + timestamp + the resolution reason (NFR-6). It reuses the **same
+  optimistic-concurrency pattern** as `acknowledge` (`If-Match` on the read version; ADR-0006): a Flag
+  already Resolved, or a lost same-version race, is translated **inside the module** to the domain
+  outcome `already-resolved` (carrying the standing resolution, so the first reason wins) - no raw `412`
+  reaches callers/UI. The `Provenance`(s) this module writes (on acknowledge and resolve) are the only
+  FHIR resources it writes beyond the Flag `Task`; they have no domain read-back seam, so they are
+  asserted directly in the integration tests.
 - The Access link is delivery only; the durable Assignment lives in the Assignment module
   ([ADR-0001](../adr/0001-assignment-as-fhir-task.md)). Swapping delivery channels never touches the
   domain.

@@ -35,9 +35,10 @@ not decided against the one-screen app foundation (#28).
 | Flag raised per fired Trigger (severity band, acute-risk Item 9) | Unit + Integration | scoring seam asserts which Flags; integration asserts Flag `Task` persisted |
 | Worklist lists unresolved Flags (Open + Acknowledged), ranked across state (FR-23/25/26) | Unit + Integration | `PriorityPolicy` unit; Worklist query returns Open + Acknowledged |
 | Single-owner Acknowledge race (FR-26) | Integration | Worklist service concurrent claim -> one owner + `FlagAlreadyClaimed`; real `If-Match` |
+| Resolve a Flag with a structured reason (FR-27/28/30) | Integration | Worklist service `resolve` -> reason + note + `executionPeriod.end` + `Provenance`; dropped from `listWorklist`; history retained; `other` requires a note; `already-resolved` on a second resolve |
 | Access link issue/validate/consume (FR-6/7/8/11) | Integration | issue -> open -> submit(consume); single-use, expiry, invalid token; `publicWebhook` Bot |
 | Assignment lifecycle Pending/Completed/Expired (FR-9) | Integration | Assignment module transitions |
-| Tracer bullet | E2E | assign -> open link -> submit -> score -> flag -> worklist -> acknowledge -> resolve |
+| Tracer bullet (landed #23) | E2E | assign -> open link -> submit -> score -> flag -> worklist -> acknowledge -> resolve, composed from the module entry points against real Medplum (`src/e2e/tracer-bullet.integration.test.ts`); asserts each step's domain outcome |
 
 ## What makes a good test here
 - Test at the **domain interface**: assert domain outcomes (e.g. `FlagAlreadyClaimed`), not HTTP
