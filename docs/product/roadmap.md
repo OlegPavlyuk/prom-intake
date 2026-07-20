@@ -16,17 +16,34 @@ end-to-end before anything is thickened.
 
 Covers the "v1? = Yes" features in [`features.md`](features.md).
 
-## Next - prove genericity & close the safety fast-follow
+## Next - prove genericity, close the safety fast-follow & the review follow-ups
 
 - **Second Instrument (GAD-7) by configuration** - the single strongest signal the platform is
   generic (FR-4). Adds no new architecture.
 - **Coordinator notifications for acute-risk Flags** - the deferred fast-follow from Q6, so the most
   urgent Flags don't depend solely on someone watching the Worklist.
 
+**Iteration 2 - product-review follow-ups**
+([Spec #45](https://github.com/OlegPavlyuk/medpulm-project/issues/45); planned, not implemented).
+Three findings from reviewing the running v1 tracer bullet, none of which change the v1
+architecture:
+
+- **Assessment history / patient timeline** (FR-33) - make the Responses + Scores that FR-32
+  already persists visible to coordinators, flagged or not. The first slice of *Longitudinal
+  tracking* (below), pulled forward.
+- **One Flag per Response - multi-reason** (FR-34) - one Worklist item per assessment carrying all
+  the reasons it fired, resolved once, instead of one independent Flag per Trigger.
+- **Search-first patient selection** (FR-35) - guide coordinators to reuse an existing patient
+  before creating one, avoiding duplicate `Patient` records that would fracture the longitudinal
+  record. Full patient identity management stays *Later*.
+
 ## Later - directional, low-resolution
 
 - **Longitudinal tracking** - trend a patient's Scores over time (the deferred-but-not-designed-out
-  capability); enables outcome-improvement metrics.
+  capability); enables outcome-improvement metrics. Its first read-only slice (assessment history,
+  FR-33) is pulled forward into *Next*.
+- **Full patient identity management** - duplicate detection/merge, MRN/DOB matching, patient
+  administration. The follow-on to the *Next* search-first change (FR-35).
 - **Recurring / scheduled assignments** - re-assess patients on a cadence.
 - **Reporting / metrics dashboard** - surface the KPIs the data model is already obligated to support
   (NFR-1).

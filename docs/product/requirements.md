@@ -18,6 +18,10 @@ tracking, recurring/scheduled assignments, coordinator-side notifications (fast-
 assignment screens, automated reminders, multi-tenancy, and any second Instrument (must be *possible*
 by configuration, not *shipped*).
 
+Some of these are now **planned for the next iteration** (not yet implemented) - see
+[Next-iteration requirements](#next-iteration-requirements-planned) and the roadmap's *Next*
+milestone.
+
 ## Actors
 
 - **Care Coordinator** - authenticated staff user; primary actor.
@@ -105,6 +109,24 @@ Priority: **Must** = required for v1; **Should** = strongly wanted; **Could** = 
 | NFR-5 | **Privacy** | Patient clinical data is protected health information; access is restricted to authenticated coordinators; Access links are unguessable, single-use, and expiring. Full security posture is an architecture-phase concern. |
 | NFR-6 | **Auditability** | Flag creation, acknowledgement, and resolution (with reason) are recorded such that "how was this risk handled" is answerable from data. |
 
+## Next-iteration requirements (planned)
+
+**Status: planned, not implemented.** These are the validated follow-ups from the product &
+architecture review of the running v1 tracer bullet, cut into
+[Spec: Iteration 2 (#45)](https://github.com/OlegPavlyuk/medpulm-project/issues/45). They keep the
+v1 architecture unchanged; they are recorded here so the product documentation stays the source of
+truth ahead of implementation. Priority within this set is *Next*, not v1 Must.
+
+| ID | Requirement | Ticket |
+| -- | ----------- | ------ |
+| FR-33 | **Assessment history.** A Care Coordinator can view a patient's completed Responses and their Scores over time - including Responses that raised no Flag - in a read-only timeline (Instrument, submission time, total Score + severity band, and Flag status if any). Turns the FR-32 data (persisted regardless of flagging) into a coordinator-visible view. First slice of longitudinal tracking; no trend/analytics yet. | [#46](https://github.com/OlegPavlyuk/medpulm-project/issues/46) |
+| FR-34 | **One Flag per Response (multi-reason).** When several Triggers fire on a single Response, the coordinator sees **one** Worklist item for that assessment, carrying all the reasons that raised it and ranked at its highest-priority tier, resolved once - rather than one independent Flag per Trigger. Refines the FR-21/FR-22 model (multiple Triggers still evaluated independently; a Flag still records *which* Triggers fired). The exact design is settled in the ticket; an ADR records it because it revises ADR-0002/0004. | [#47](https://github.com/OlegPavlyuk/medpulm-project/issues/47) |
+| FR-35 | **Search-first patient selection.** On assign, searching for an existing patient is the primary path and creating a new patient is a deliberate fallback, with a name-collision warning, to avoid duplicate `Patient` records. Stays within FR-12's "minimal Create Patient"; full patient administration remains deferred. | [#48](https://github.com/OlegPavlyuk/medpulm-project/issues/48) |
+
+> **Still deferred (beyond this iteration):** full patient identity management - duplicate merge,
+> MRN/DOB matching, patient administration - remains a Deferred finding below. FR-35 is the cheap,
+> in-scope half that protects the future longitudinal record.
+
 ## Product conventions (not instrument mandates)
 
 Called out explicitly so specs and code do not over-claim clinical authority:
@@ -138,7 +160,9 @@ Resolved findings are folded into the requirements above. These are intentionall
 
 **To Feature Specifications:**
 - Quantify KPI targets and guardrail thresholds once baselines / demo data exist.
-- Duplicate / multiple Responses and Flags per patient: dedup or linking rules.
+- Duplicate / multiple Responses and Flags per patient: dedup or linking rules. *Partly promoted to
+  the next iteration - FR-34 (one Flag per Response) and FR-35 (search-first patient) above; full
+  patient-record dedup/merge remains deferred.*
 - "Escalated" resolution reason (FR-28): define what escalation does downstream, or rename.
 - "Resume" wording (FR-8) vs no-draft-persistence (FR-16): clarify copy so it reads as "start again".
 - Crisis Response resource content and locale (e.g. US 988 vs configurable).

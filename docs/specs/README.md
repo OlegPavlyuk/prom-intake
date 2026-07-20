@@ -12,4 +12,8 @@ offline reading or long-lived reference). When you keep a local copy:
 Do not hand-author specs here from scratch - run `/to-spec` so the structure, seams, and
 `ready-for-agent` label are produced consistently.
 
-_No local spec mirrors yet._
+## Local mirrors
+
+- [`phq9-tracer-bullet.md`](phq9-tracer-bullet.md) - v1 spec (issue #1).
+- [`phq9-tracer-bullet-tickets.md`](phq9-tracer-bullet-tickets.md) - v1 ticket breakdown (#13-#23).
+- [`iteration-2-tickets.md`](iteration-2-tickets.md) - Iteration 2 ticket breakdown (spec #45, #46-#48).
