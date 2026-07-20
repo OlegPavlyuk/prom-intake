@@ -53,8 +53,10 @@ _Avoid_: result, rating, grade.
 ### Risk detection
 
 **Trigger**:
-A rule attached to an Instrument that inspects a Response and, when its condition is met, raises a
-Flag. An Instrument may define several.
+A rule attached to an Instrument that inspects a Response and, when its condition is met,
+contributes a reason to that Response's Flag - raising the Flag if it is not already raised. An
+Instrument may define several, and several may fire on one Response; they surface as reasons on a
+single Flag, not as separate Flags (see Flag).
 _Avoid_: rule, alert condition; "threshold" (a threshold is one input to a Trigger, not the Trigger).
 
 **Severity-band trigger**:
@@ -80,10 +82,12 @@ Worklist, and works each Flag to resolution. The product's primary user.
 _Avoid_: nurse, clinician, provider, admin (when this specific role is meant).
 
 **Flag**:
-A work item raised when a Trigger fires on a Response, representing a patient who needs the Care
-Coordinator's attention. A Flag is worked through a lifecycle - **Open** (unclaimed, on the
-Worklist), **Acknowledged** (claimed by a coordinator, being worked), **Resolved** (completed and
-off the active Worklist) - not merely displayed.
+A work item raised when one or more Triggers fire on a Response, representing a patient who needs
+the Care Coordinator's attention. A Response yields **at most one Flag**: every Trigger that fires
+on it is recorded as a reason on that single Flag, which takes the highest priority among its
+reasons. A Flag is worked through a lifecycle - **Open** (unclaimed, on the Worklist),
+**Acknowledged** (claimed by a coordinator, being worked), **Resolved** (completed and off the
+active Worklist) - and is claimed and resolved once, as one unit of attention, not per reason.
 _Avoid_: alert, notification, task (these imply a push or a fire-and-forget signal).
 
 **Resolution reason**:

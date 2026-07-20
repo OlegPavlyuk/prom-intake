@@ -15,7 +15,7 @@ recorded in [`requirements.md`](../product/requirements.md) (FR-33/34/35) and
 | # | Issue | Ticket | FR | Cx | Triage | Model |
 | - | ----- | ------ | -- | -- | ------ | ----- |
 | T12 | [#46](https://github.com/OlegPavlyuk/medpulm-project/issues/46) | Assessment history: coordinator patient timeline of Responses & Scores | FR-33 | M | ready-for-agent | Sonnet |
-| T13 | [#47](https://github.com/OlegPavlyuk/medpulm-project/issues/47) | One Flag per Response (multi-reason): settle design + implement | FR-34 | M-L | ready-for-human | Opus |
+| T13 | [#47](https://github.com/OlegPavlyuk/medpulm-project/issues/47) | One Flag per Response (multi-reason): implement per ADR-0011 | FR-34 | M | ready-for-agent | Opus |
 | T14 | [#48](https://github.com/OlegPavlyuk/medpulm-project/issues/48) | Search-first patient selection on assign | FR-35 | S | ready-for-agent | Sonnet |
 
 Full acceptance criteria + Definition of Done live in each issue body.
@@ -25,9 +25,10 @@ Full acceptance criteria + Definition of Done live in each issue body.
 The three tickets are **independent** - no blocking edges between them, and the tracer bullet
 (#13-#23) they build on is merged. Recommended order by clinical value / effort:
 
-1. **#47** (T13) - highest clinical value, cheapest fix; carries an open design decision, so it is
-   `ready-for-human` until its design pass lands an ADR, after which implementation is a
-   straightforward slice.
+1. **#47** (T13) - highest clinical value, cheapest fix. Design settled in
+   [ADR-0011](../adr/0011-one-flag-per-response.md) (one Flag per Response, multiple reasons); now
+   `ready-for-agent` - the implementation is confined to the scoring kernel's grouping step +
+   Flag-detail rendering.
 2. **#48** (T14) - protects the future longitudinal record by curbing duplicate patients; a
    contained UI change.
 3. **#46** (T12) - turns the already-persisted (FR-32) Responses/Scores into a coordinator-visible

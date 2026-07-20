@@ -24,3 +24,4 @@ When new code would contradict an existing ADR, surface the conflict explicitly 
 - [ADR-0008](0008-integration-tests-against-real-medplum.md) - Integration tests run against a real Medplum, not a mocked FHIR server (`accepted`).
 - [ADR-0009](0009-bots-as-adapters-over-shared-domain-logic.md) - Medplum Bots are thin adapters over shared domain logic (`accepted`).
 - [ADR-0010](0010-frontend-architecture.md) - Frontend architecture: two credential-isolated Vite/React SPAs on Medplum's built-in auth (`accepted`).
+- [ADR-0011](0011-one-flag-per-response.md) - One Flag per Response, carrying every Trigger's reason (revises ADR-0002/0004's per-Trigger Flag) (`accepted`).
