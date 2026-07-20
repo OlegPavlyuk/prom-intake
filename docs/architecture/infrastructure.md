@@ -30,6 +30,29 @@ creates a `ClientApplication` **via the admin endpoint** (so it also gets its `P
 a plain FHIR create would omit it and the client-credentials login would fail), and writes the three
 env vars below. Re-running it provisions a new project + credentials.
 
+### Full local app run (single project, `npm run dev:full`)
+
+The integration harness only needs client credentials, but **running the whole app** (coordinator +
+patient + both Bots + seeded PHQ-9) needs one project that also carries a **human login** for the
+coordinator's `SignInForm` - Medplum resources are project-scoped, so the login project must be the
+same project that holds the seeded Instrument and the Bot-raised Flags. The three provisioning paths:
+
+| Script | Creates | Used by |
+| ------ | ------- | ------- |
+| `medplum:provision` | client credentials only (own project) | integration harness / CI |
+| `medplum:dev-user` | a human login only (own project) | `verifier-ui` auth checks |
+| `medplum:provision-local` | **one project with both** - writes `.env` + `.dev-user.json` | the full local app run |
+
+`scripts/provision-local.ts` registers a user + project, then mints a `ClientApplication` in that
+same project via the admin endpoint (the registered user is its admin). It is idempotent: a re-run
+reuses the project when the existing `.env` credentials still authenticate against the live server,
+and re-provisions cleanly after `docker compose down -v` (pass `--fresh` to force a new one).
+
+`npm run dev:full` (`scripts/dev-full.ts`) is the single documented entry point. It brings up the
+Docker Medplum stack, runs `provision-local`, seeds the PHQ-9, deploys both Bots + the Subscription
+(reusing the idempotent `medplum:seed` / `medplum:deploy-bots` scripts), then runs both dev servers
+concurrently and prints the coordinator login + URLs. See the README's **Run the whole app locally**.
+
 ### Hosted Medplum (alternative)
 
 Skip docker-compose and point at any Medplum test project by setting the env vars yourself. Create a
