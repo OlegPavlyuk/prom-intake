@@ -29,6 +29,37 @@ npm ci
 | `npm test` | both suites |
 | `npm run check` | typecheck + lint + boundaries + tests |
 
+## Run the whole app locally
+
+One command brings up the **complete** local environment for the end-to-end workflow -
+assign -> complete -> score -> flag -> worklist -> resolve - with everything in a single Medplum
+project (so the coordinator login sees the seeded PHQ-9 and the Flags the Scoring Bot raises):
+
+```bash
+npm ci
+npm run dev:full            # reuse a live project if there is one
+npm run dev:full -- --fresh # force a brand-new project
+```
+
+`dev:full` starts the Docker Medplum stack, provisions (or reuses) a unified local project with
+**both** a coordinator login and client credentials, seeds the PHQ-9, deploys both Bots + the
+Subscription, then runs the coordinator (http://localhost:3000) and patient (http://localhost:3001)
+dev servers. It prints the coordinator sign-in credentials (also written to `.dev-user.json`). Then:
+
+1. Sign in to the coordinator, open **Assign**, create a patient, **Assign PHQ-9**, copy the Access link.
+2. Open the link (patient app), answer the PHQ-9, submit.
+3. Back in the coordinator **Worklist**, the Flag appears; open it to claim and resolve.
+
+Stop the apps with Ctrl-C (Medplum keeps running). Tear everything down with:
+
+```bash
+docker compose -f infra/medplum/docker-compose.yml down -v
+```
+
+Requires Docker running and a browser to drive the UI. See
+[`docs/architecture/infrastructure.md`](docs/architecture/infrastructure.md) for how the single-project
+provisioning works.
+
 ## Integration tests (real Medplum)
 
 Integration points run against a **real Medplum test project**, never a mock
