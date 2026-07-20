@@ -43,9 +43,10 @@ export interface FlagOrigin {
 }
 
 /**
- * Raise a Flag for a fired Trigger, idempotently. The Flag is keyed on its
- * (Response, Trigger) origin, so a redelivered Subscription event resolves to
- * the existing Flag instead of creating a duplicate (event-flows; at-least-once
+ * Raise a Response's Flag, idempotently. A Response yields one Flag carrying
+ * every fired Trigger's reason (ADR-0011); it is keyed on its (Response, fired
+ * trigger codes) origin, so a redelivered Subscription event resolves to the
+ * existing Flag instead of creating a duplicate (event-flows; at-least-once
  * delivery, ADR-0004). Returns the persisted domain Flag.
  */
 export async function raiseFlag(

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 // Exercised through the package entry point (its seam), like every other caller.
 import type { FlagPriority } from "../instrument.js";
 import type { Flag, FlagStatus } from "../workflow.js";
-import { PriorityPolicy } from "../priority.js";
+import { PriorityPolicy, highestPriority } from "../priority.js";
 
 // --- Fixtures ---------------------------------------------------------------
 
@@ -200,5 +200,26 @@ describe("PriorityPolicy.order - purity and edge cases", () => {
       flag("open", "urgent", "Open", T3),
     ]);
     expect(ids(ordered)).toEqual(["open", "ack", "resolved"]);
+  });
+});
+
+// --- highestPriority (multi-reason Flag tier; ADR-0011) ---------------------
+
+describe("highestPriority", () => {
+  it("returns the sole tier when one Trigger fired", () => {
+    expect(highestPriority(["urgent"])).toBe("urgent");
+  });
+
+  it("takes acute-risk over urgent and routine, regardless of order", () => {
+    expect(highestPriority(["urgent", "acute-risk", "routine"])).toBe(
+      "acute-risk"
+    );
+    expect(highestPriority(["routine", "urgent", "acute-risk"])).toBe(
+      "acute-risk"
+    );
+  });
+
+  it("takes urgent over routine when no acute-risk reason is present", () => {
+    expect(highestPriority(["routine", "urgent"])).toBe("urgent");
   });
 });

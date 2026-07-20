@@ -165,40 +165,44 @@ describeIntegration(
       );
 
       // 4. SCORE + FLAG - the Scoring Bot scores the Response (total 13) and
-      // raises a Flag per fired Trigger: severity-band + acute-risk (FR-18/20/21/22).
+      // raises ONE Flag for it, carrying both fired reasons: severity-band +
+      // acute-risk, ranked at acute-risk (FR-18/20/21/22; ADR-0011).
       const qr = await medplum.readResource(
         "QuestionnaireResponse",
         submission.responseId
       );
       const scored = await scoreResponse(medplum, qr);
       expect(scored.score.total).toBe(13);
-      const raisedTriggers = scored.flags.flatMap((f) => f.triggerCodes).sort();
-      expect(raisedTriggers).toEqual(
+      expect(scored.flags).toHaveLength(1);
+      expect([...scored.flags[0]!.triggerCodes].sort()).toEqual(
         [ACUTE_RISK_TRIGGER, SEVERITY_TRIGGER].sort()
       );
+      expect(scored.flags[0]!.priority).toBe("acute-risk");
 
-      // 5. WORKLIST - both Flags surface on the shared Worklist; the acute-risk
-      // Flag ranks first (FR-23/24). Filter to this patient (the project holds
-      // other Flags from sibling suites).
+      // 5. WORKLIST - the single Flag surfaces on the shared Worklist, ranked at
+      // its highest tier, acute-risk (FR-23/24). Filter to this patient (the
+      // project holds other Flags from sibling suites).
       const mineOnWorklist = (
         flags: Awaited<ReturnType<typeof listWorklist>>
       ) => flags.filter((f) => f.patientId === patient.id);
       const worklist = mineOnWorklist(await listWorklist(medplum));
-      expect(worklist).toHaveLength(2);
+      expect(worklist).toHaveLength(1);
       const top = worklist[0]!;
       expect(top.priority).toBe("acute-risk");
       expect(top.status).toBe("Open");
 
-      // 6. FLAG DETAIL - opening the top Flag composes the clinical signal from
-      // the origin Response/Score (FR-29): same patient, the acute-risk Trigger.
+      // 6. FLAG DETAIL - opening the Flag composes the clinical signal from the
+      // origin Response/Score (FR-29): same patient, BOTH reasons on the one Flag.
       const record = await getFlag(medplum, top.id);
       expect(record.flag.id).toBe(top.id);
       expect(record.flag.patientId).toBe(patient.id);
       expect(record.responseId).toBe(qr.id);
-      expect(top.triggerCodes).toContain(ACUTE_RISK_TRIGGER);
+      expect([...top.triggerCodes].sort()).toEqual(
+        [ACUTE_RISK_TRIGGER, SEVERITY_TRIGGER].sort()
+      );
 
-      // 7. ACKNOWLEDGE - the coordinator claims the acute-risk Flag, single-owner
-      // (FR-26); it stays on the Worklist, now Acknowledged and owned.
+      // 7. ACKNOWLEDGE - the coordinator claims the Flag, single-owner (FR-26);
+      // it stays on the Worklist, now Acknowledged and owned.
       const coordinatorRef = createReference(coordinator).reference!;
       const ack = await acknowledge(medplum, top.id, coordinatorRef);
       expect(ack.outcome).toBe("acknowledged");
@@ -210,8 +214,8 @@ describeIntegration(
         "Acknowledged"
       );
 
-      // 8. RESOLVE - the coordinator resolves the Flag with a structured reason;
-      // it leaves the active Worklist while history is retained (FR-27/28/30).
+      // 8. RESOLVE - resolving the one Flag once clears the whole assessment from
+      // the Worklist while history is retained (FR-27/28/30; ADR-0011).
       const resolved = await resolve(
         medplum,
         top.id,
@@ -226,12 +230,10 @@ describeIntegration(
       expect(resolved.flag.status).toBe("Resolved");
       expect(resolved.flag.resolution?.reason).toBe("referred-to-clinician");
 
-      // The resolved Flag is gone from the active Worklist; the acute-risk work
-      // item is done and only the still-Open severity Flag remains for this patient.
+      // A single resolve empties the Worklist for this patient - no sibling Flag
+      // left Open for the same assessment (ADR-0011).
       const afterResolve = mineOnWorklist(await listWorklist(medplum));
-      expect(afterResolve.map((f) => f.id)).not.toContain(top.id);
-      expect(afterResolve).toHaveLength(1);
-      expect(afterResolve[0]!.triggerCodes).toContain(SEVERITY_TRIGGER);
+      expect(afterResolve).toHaveLength(0);
 
       // History retained (no hard delete): the resolved Flag is still readable
       // through the domain seam, carrying its resolution (FR-30, NFR-6).

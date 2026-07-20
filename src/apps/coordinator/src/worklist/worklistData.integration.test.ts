@@ -106,18 +106,18 @@ describeIntegration("Flag detail: compose the FR-29 signal (ADR-0008)", () => {
     return qr;
   }
 
-  it("composes patient, Instrument, score+band, fired Triggers, and item answers (FR-29)", async () => {
+  it("composes patient, Instrument, score+band, every fired Trigger, and item answers (FR-29; ADR-0011)", async () => {
     await submitAndScore();
 
-    // Locate this patient's acute-risk Flag through the shared Worklist.
+    // This Response tripped both Triggers, so it has ONE Flag, ranked acute-risk.
     const rows = await loadWorklist(medplum);
-    const acute = rows.find(
-      (r) => r.flag.patientId === patient.id && r.flag.priority === "acute-risk"
-    );
-    expect(acute).toBeDefined();
-    expect(acute!.patientName).toBe("Dana Detail-Test");
+    const mine = rows.filter((r) => r.flag.patientId === patient.id);
+    expect(mine).toHaveLength(1);
+    const flagRow = mine[0]!;
+    expect(flagRow.flag.priority).toBe("acute-risk");
+    expect(flagRow.patientName).toBe("Dana Detail-Test");
 
-    const detail = await getFlagDetail(medplum, acute!.flag.id);
+    const detail = await getFlagDetail(medplum, flagRow.flag.id);
 
     // Patient identity, Instrument, and submission time.
     expect(detail.patientName).toBe("Dana Detail-Test");
@@ -128,11 +128,20 @@ describeIntegration("Flag detail: compose the FR-29 signal (ADR-0008)", () => {
     expect(detail.total).toBe(13);
     expect(detail.band?.code).toBe("moderate");
 
-    // Which Trigger(s) fired - this Flag is the acute-risk one, highlighted.
-    expect(detail.triggers).toHaveLength(1);
-    expect(detail.triggers[0]!.code).toBe("phq9-item-9-acute-risk");
-    expect(detail.triggers[0]!.acuteRisk).toBe(true);
-    expect(detail.triggers[0]!.label).toMatch(/item 9/i);
+    // Both reasons compose onto the single Flag; the acute-risk one is highlighted.
+    expect([...detail.triggers.map((t) => t.code)].sort()).toEqual([
+      "phq9-item-9-acute-risk",
+      "phq9-moderate-or-above",
+    ]);
+    const acuteReason = detail.triggers.find(
+      (t) => t.code === "phq9-item-9-acute-risk"
+    )!;
+    expect(acuteReason.acuteRisk).toBe(true);
+    expect(acuteReason.label).toMatch(/item 9/i);
+    const severityReason = detail.triggers.find(
+      (t) => t.code === "phq9-moderate-or-above"
+    )!;
+    expect(severityReason.acuteRisk).toBe(false);
 
     // Item-level answers, in Instrument order, with the acute-risk item flagged.
     expect(detail.answers).toHaveLength(PHQ9.items.length);

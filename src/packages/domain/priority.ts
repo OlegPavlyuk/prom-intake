@@ -24,6 +24,20 @@ const PRIORITY_RANK: Record<FlagPriority, number> = {
 };
 
 /**
+ * The highest-priority tier among the given tiers (acute-risk outranks urgent
+ * outranks routine; FR-24). When several Triggers fire on one Response, the
+ * single Flag they raise takes its most urgent tier (ADR-0011) - the same tier
+ * order `order` ranks by, kept in one place. Requires a non-empty input.
+ */
+export function highestPriority(
+  priorities: readonly FlagPriority[]
+): FlagPriority {
+  return priorities.reduce((top, p) =>
+    PRIORITY_RANK[p] < PRIORITY_RANK[top] ? p : top
+  );
+}
+
+/**
  * State order within a tier (FR-26): Open before Acknowledged. Resolved Flags
  * are not on the Worklist (ADR-0007: the Worklist service loads only unresolved
  * Flags), so they are not expected here; ranking them last keeps `order` a total

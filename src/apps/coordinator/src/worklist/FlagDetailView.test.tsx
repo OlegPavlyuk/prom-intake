@@ -89,6 +89,36 @@ describe("FlagDetailView", () => {
     expect(screen.getAllByText(/acute risk/i).length).toBeGreaterThan(0);
   });
 
+  it("renders every reason on a multi-reason Flag, acute-risk highlighted (ADR-0011)", () => {
+    // A Response that tripped both Triggers yields one Flag carrying both reasons.
+    renderView(
+      detail({
+        flag: {
+          ...ACUTE_FLAG,
+          triggerCodes: ["phq9-item-9-acute-risk", "phq9-moderate-or-above"],
+        },
+        triggers: [
+          {
+            code: "phq9-item-9-acute-risk",
+            label: "PHQ-9 Item 9 positive (self-harm / acute risk)",
+            acuteRisk: true,
+          },
+          {
+            code: "phq9-moderate-or-above",
+            label: "PHQ-9 total 10 or above (moderate or higher)",
+            acuteRisk: false,
+          },
+        ],
+      })
+    );
+
+    // Both reasons are shown on the single Flag...
+    expect(screen.getByText(/item 9 positive/i)).toBeInTheDocument();
+    expect(screen.getByText(/total 10 or above/i)).toBeInTheDocument();
+    // ...and the acute-risk reason is still highlighted.
+    expect(screen.getAllByText(/acute risk/i).length).toBeGreaterThan(0);
+  });
+
   it("lists item-level answers and marks the acute-risk item (Item 9)", () => {
     renderView(detail());
 

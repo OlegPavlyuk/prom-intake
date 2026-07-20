@@ -46,12 +46,23 @@ const PRIORITY_FROM_FHIR: Record<string, FlagPriority> = {
   routine: "routine",
 };
 
-/** The idempotency key binding a Flag to its (Response, Trigger) origin. */
+/**
+ * The idempotency key binding a Response's Flag to its origin: the Response plus
+ * its sorted fired trigger codes (ADR-0011). One Flag per Response, so the sorted
+ * codes make the key stable under redelivery regardless of Trigger order.
+ *
+ * The codes are joined with `_`, never `,`: this key is used verbatim as a FHIR
+ * token search value (`identifier=<system>|<key>`) in the conditional create that
+ * enforces idempotency, and in token search a comma is an OR separator. A
+ * multi-code key joined with a comma would be parsed as several alternative
+ * values and match the wrong Flag (or none), so the join must stay comma-free.
+ * The Trigger codes are controlled kebab-case config, so `_` is unambiguous.
+ */
 export function flagDedupKey(
   responseId: string,
   triggerCodes: readonly string[]
 ): string {
-  return `${responseId}:${[...triggerCodes].sort().join(",")}`;
+  return `${responseId}:${[...triggerCodes].sort().join("_")}`;
 }
 
 /** Whether a `Task` is a Flag (vs. an Assignment or unrelated Task). */
