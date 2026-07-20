@@ -10,6 +10,11 @@ import react from "@vitejs/plugin-react";
 // build/runtime vars (see infrastructure.md and `.env.example`).
 export default defineConfig({
   root: fileURLToPath(new URL(".", import.meta.url)),
+  // Per-app dep-optimizer cache. The two apps share the repo's single
+  // `node_modules`, so the default cacheDir collides and each server's cold-start
+  // optimize clobbers the other's - which surfaces in the browser as perpetual
+  // 504 "Outdated Optimize Dep" when both dev servers run at once. Pin it here.
+  cacheDir: fileURLToPath(new URL("node_modules/.vite", import.meta.url)),
   plugins: [react()],
   server: { port: 3000 },
   build: { outDir: "dist" },

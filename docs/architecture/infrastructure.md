@@ -60,7 +60,10 @@ SPAs under `src/apps/`, kept in the **single-package** repo (no npm workspaces i
 | Patient completion page | `src/apps/patient/` | `npm run build:patient` (own `vite.config.ts`) -> static bundle | none (account-less, PHI-minimal) |
 
 Each app has its own `vite.config.ts` whose `root` is pinned to the app directory, so it is launched
-from the repo root via `--config`.
+from the repo root via `--config`. Each also pins a distinct `cacheDir` (`<app>/node_modules/.vite`):
+the two apps share the repo's single `node_modules`, so the default shared cache makes their two dev
+servers clobber each other's optimized deps when run together (browser `504 Outdated Optimize Dep`) -
+which the full-app flow (both servers up at once) needs.
 
 ```bash
 npm run dev:coordinator       # Vite dev server (http://localhost:3000)
@@ -120,16 +123,17 @@ account" pattern, so the whole thing is invented and carefully bounded.
      `globalThis.crypto` (the sandbox exposes `require('node:crypto')` but not a global `crypto`, and
      token hashing is isomorphic Web Crypto) and a footer that re-exports `handler` onto the original
      `exports` (esbuild's CJS wrapper reassigns `module.exports`, which the runner does not read);
-  2. creates the Bot **and** its scoped `AccessPolicy` **as the client-credentials app** (whose home
+  2. as **super admin** (`admin@example.com`/`medplum_admin` by default; override with
+     `MEDPLUM_SUPER_ADMIN_EMAIL`/`_PASSWORD`), enables the `bots` project feature - this **must**
+     happen before any `$deploy`, or the deploy is rejected with `Bots not enabled`;
+  3. creates the Bot **and** its scoped `AccessPolicy` **as the client-credentials app** (whose home
      is the target project) so both are homed alongside the tokens/assignments the Bot must reach - a
      Bot created via the admin endpoint lands in the caller's project, which for super admin is the
      wrong one;
-  3. `$deploy`s the bundled code;
-  4. as **super admin** (`admin@example.com`/`medplum_admin` by default; override with
-     `MEDPLUM_SUPER_ADMIN_EMAIL`/`_PASSWORD`), enables the `bots` project feature and creates the
-     Bot's `ProjectMembership` with the `AccessPolicy` attached (a public Bot **must** have one; the
-     client-credentials app cannot create memberships);
-  5. writes `VITE_ACCESS_LINK_WEBHOOK_URL=<baseUrl>/webhook/<membership-id>` to
+  4. `$deploy`s the bundled code;
+  5. as **super admin**, creates the Bot's `ProjectMembership` with the `AccessPolicy` attached (a
+     public Bot **must** have one; the client-credentials app cannot create memberships);
+  6. writes `VITE_ACCESS_LINK_WEBHOOK_URL=<baseUrl>/webhook/<membership-id>` to
      `src/apps/patient/.env.local` (gitignored) for the patient app.
 - **Invocation.** Unauthenticated `POST /webhook/{ProjectMembership.id}` with a JSON body
   `{ operation: "open" | "submit", token, answers? }`. The Bot is a thin adapter (ADR-0009) over the

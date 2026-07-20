@@ -9,14 +9,15 @@
  *   1. bundle `src/packages/access-link/bot.ts` into one self-contained file,
  *      with a banner that maps Node's WebCrypto onto `globalThis.crypto` (the
  *      vmcontext sandbox exposes `require('node:crypto')` but not `crypto`);
- *   2. create (or reuse) the Bot + its scoped AccessPolicy in the target project,
+ *   2. enable the `bots` project feature (super admin) - this MUST precede any
+ *      `$deploy`, or the deploy is rejected with "Bots not enabled";
+ *   3. create (or reuse) the Bot + its scoped AccessPolicy in the target project,
  *      as the client-credentials app (whose home IS that project) - so both are
  *      homed alongside the tokens/assignments the Bot must reach;
- *   3. `$deploy` the bundled code;
- *   4. enable the `bots` project feature and create/attach the Bot's
- *      ProjectMembership + AccessPolicy - the two super-admin-only steps (a
- *      public Bot MUST have an AccessPolicy on its membership);
- *   5. write the webhook URL to `src/apps/patient/.env.local` for the patient app.
+ *   4. `$deploy` the bundled code;
+ *   5. create/attach the Bot's ProjectMembership + AccessPolicy (super admin) - a
+ *      public Bot MUST have an AccessPolicy on its membership;
+ *   6. write the webhook URL to `src/apps/patient/.env.local` for the patient app.
  *
  * Usage (after `npm run medplum:provision` + `npm run medplum:seed`, with the
  * server started with `vmContextBotsEnabled: true` - see medplum.config.json):
@@ -103,6 +104,12 @@ async function main(): Promise<void> {
     throw new Error("Could not resolve the target project from .env creds");
   }
 
+  // Enable the `bots` project feature BEFORE any `$deploy` - the deploy is
+  // rejected with "Bots not enabled" on a project without the feature, so this
+  // super-admin step has to precede bot creation/deploy, not follow it.
+  const admin = await superAdminLogin(baseUrl);
+  await enableBotsFeature(admin, projectId);
+
   const policy = await ensureAccessPolicy(app);
   const bot = await ensureBot(app, code);
   console.log(`Bot ${bot.id} ready and deployed (vmcontext, publicWebhook).`);
@@ -111,8 +118,6 @@ async function main(): Promise<void> {
   const scoringBot = await ensureScoringBot(app, scoringCode);
   console.log(`Scoring Bot ${scoringBot.id} ready and deployed (vmcontext).`);
 
-  const admin = await superAdminLogin(baseUrl);
-  await enableBotsFeature(admin, projectId);
   const membership = await ensureBotMembership(admin, bot, policy, projectRef);
   console.log(`AccessPolicy attached to membership ${membership.id}.`);
 

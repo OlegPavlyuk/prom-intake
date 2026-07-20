@@ -20,6 +20,10 @@ export default defineConfig(({ mode }) => {
   const medplumBaseUrl = env.VITE_MEDPLUM_BASE_URL ?? "http://localhost:8103/";
   return {
     root: dir,
+    // Per-app dep-optimizer cache - see the coordinator config: the two apps
+    // share one `node_modules`, so a shared cacheDir makes the two dev servers
+    // clobber each other's optimized deps (504 "Outdated Optimize Dep").
+    cacheDir: fileURLToPath(new URL("node_modules/.vite", import.meta.url)),
     plugins: [react()],
     server: {
       port: 3001,
