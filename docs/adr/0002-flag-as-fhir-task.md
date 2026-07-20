@@ -5,6 +5,10 @@ date: 2026-07-13
 
 # Persist the domain Flag as a FHIR `Task`, not a FHIR `Flag`
 
+> **Revised by [ADR-0011](0011-one-flag-per-response.md):** a Response yields a single Flag `Task`
+> carrying every fired Trigger's reason, not one Flag per Trigger. The `Task` persistence decision
+> below stands; only the one-Flag-per-Trigger assumption is superseded.
+
 The domain [Flag](../../CONTEXT.md) - a work item raised when a Trigger fires on a Response,
 worked through **Open -> Acknowledged -> Resolved**, with a single owner, a structured Resolution
 reason + optional note, and a priority - is persisted as a FHIR **`Task`**. It is **not** persisted

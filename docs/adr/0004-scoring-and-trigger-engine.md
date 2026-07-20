@@ -13,8 +13,10 @@ creation. The Bot:
 2. Computes the [Score](../../CONTEXT.md) and **always** writes the Score `Observation`(s) - LOINC
    `44261-6` total (and optionally the `44249-1` panel), `derivedFrom` the `QuestionnaireResponse`.
    This satisfies FR-32 (persist every Response + Score regardless of flagging).
-3. Evaluates each configured Trigger and **conditionally** creates the [Flag](0002-flag-as-fhir-task.md)
-   `Task`(s), recording which Trigger fired (FR-22).
+3. Evaluates each configured Trigger and **conditionally** raises the [Flag](0002-flag-as-fhir-task.md),
+   recording which Trigger fired (FR-22). Note: **[ADR-0011](0011-one-flag-per-response.md) revises
+   this** - all Triggers that fire on one Response are grouped into a **single** Flag `Task` carrying
+   every reason, not one Flag per Trigger.
 
 See [research](../research/medplum-prom-architecture.md) §5.
 
