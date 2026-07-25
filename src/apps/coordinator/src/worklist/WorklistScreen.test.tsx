@@ -64,6 +64,7 @@ function renderScreen(props: {
   loadDetail?: (flagId: string) => Promise<FlagDetail>;
   acknowledge?: (flagId: string) => Promise<ClaimResult>;
   resolve?: (flagId: string, resolution: Resolution) => Promise<ResolveResult>;
+  onViewHistory?: (patient: { id: string; name: string }) => void;
 }): void {
   render(
     <MedplumProvider medplum={new MockClient()}>
@@ -135,6 +136,25 @@ describe("WorklistScreen", () => {
     expect(
       await screen.findByRole("heading", { name: /^worklist$/i })
     ).toBeInTheDocument();
+  });
+
+  it("navigates from a Flag's detail to that patient's history (FR-33)", async () => {
+    const onViewHistory = vi.fn();
+    renderScreen({
+      load: () => Promise.resolve([ACUTE_ROW]),
+      loadDetail: () => Promise.resolve(detail()),
+      onViewHistory,
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /view/i }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /view patient history/i })
+    );
+
+    expect(onViewHistory).toHaveBeenCalledWith({
+      id: "patient-1",
+      name: "Ada Lovelace",
+    });
   });
 
   it("shows a friendly error when the Worklist fails to load", async () => {

@@ -31,15 +31,21 @@ import { loadPatientTimeline, type TimelineRow } from "./timelineData";
 // client (ADR-0010). The screen trusts the composition's reverse-chronological
 // order and never re-sorts.
 
+/** A patient the coordinator has chosen to view. */
+export interface SelectedPatient {
+  readonly id: string;
+  readonly name: string;
+}
+
 export interface PatientTimelineScreenProps {
   /** Load a patient's timeline rows (defaults to the authenticated client). */
   readonly load?: (patientId: string) => Promise<TimelineRow[]>;
-}
-
-/** A patient the coordinator has chosen to view. */
-interface SelectedPatient {
-  readonly id: string;
-  readonly name: string;
+  /**
+   * A patient to open immediately, skipping the search - used when the
+   * coordinator navigates here from a patient's Flag on the Worklist (FR-33).
+   * The search stays available to look up a different patient.
+   */
+  readonly initialPatient?: SelectedPatient;
 }
 
 const FLAG_BADGE: Record<FlagStatus, { readonly color: string }> = {
@@ -64,6 +70,7 @@ function scoreLabel(row: TimelineRow): string {
 
 export function PatientTimelineScreen({
   load,
+  initialPatient,
 }: PatientTimelineScreenProps): JSX.Element {
   const medplum = useMedplum();
   const doLoad = useCallback(
@@ -78,7 +85,11 @@ export function PatientTimelineScreen({
   const [results, setResults] = useState<Patient[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  const [selected, setSelected] = useState<SelectedPatient | null>(null);
+  // Start on the patient the coordinator navigated in with (if any), so their
+  // history loads without a search; the search below can still switch patients.
+  const [selected, setSelected] = useState<SelectedPatient | null>(
+    initialPatient ?? null
+  );
   const [rows, setRows] = useState<TimelineRow[] | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
 

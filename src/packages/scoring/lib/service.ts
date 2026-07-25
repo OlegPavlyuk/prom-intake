@@ -227,15 +227,16 @@ export async function getResponse(
 }
 
 /**
- * List a patient's completed Responses, newest first. A `QuestionnaireResponse`
- * exists only once submitted (the submit path persists it), so every Response
- * this returns is a completed one - the assessment history the coordinator
- * timeline is built from (FR-33). The Scoring module owns turning a persisted
- * Response into domain facts, so the timeline reads Responses through this entry
- * point rather than touching the `QuestionnaireResponse` inline
- * (module-boundaries). Reverse-chronological order is intrinsic to a timeline, so
- * it is the read's contract (mirroring how `listWorklist` returns an ordered
- * list), asserted at the seam. Callers get domain answers, never FHIR.
+ * List a patient's completed Responses, newest first. The submit path persists a
+ * `QuestionnaireResponse` with `status = completed` (there is no draft flow), and
+ * this filters on that status, so every Response returned is a completed one - the
+ * assessment history the coordinator timeline is built from (FR-33). The Scoring
+ * module owns turning a persisted Response into domain facts, so the timeline
+ * reads Responses through this entry point rather than touching the
+ * `QuestionnaireResponse` inline (module-boundaries). Reverse-chronological order
+ * is intrinsic to a timeline, so it is the read's contract (mirroring how
+ * `listWorklist` returns an ordered list), asserted at the seam. Callers get
+ * domain answers, never FHIR.
  */
 export async function findResponsesByPatient(
   medplum: MedplumClient,
@@ -243,6 +244,7 @@ export async function findResponsesByPatient(
 ): Promise<SubmittedResponse[]> {
   const responses = await medplum.searchResources("QuestionnaireResponse", {
     subject: `Patient/${patientId}`,
+    status: "completed",
     _sort: "-authored",
     _count: "1000",
   });

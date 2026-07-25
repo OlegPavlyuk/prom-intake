@@ -124,6 +124,31 @@ describe("PatientTimelineScreen", () => {
     expect(screen.getByText("None")).toBeInTheDocument();
   });
 
+  it("opens a preselected patient's history immediately, without a search (FR-33 navigation)", async () => {
+    const load = vi.fn<(id: string) => Promise<TimelineRow[]>>(() =>
+      Promise.resolve([row({ responseId: "only", flagStatus: "Resolved" })])
+    );
+    render(
+      <MedplumProvider medplum={new MockClient()}>
+        <MantineProvider>
+          <PatientTimelineScreen
+            load={load}
+            initialPatient={{ id: "patient-9", name: "Grace Hopper" }}
+          />
+        </MantineProvider>
+      </MedplumProvider>
+    );
+
+    // The history loads for the passed-in patient without any search interaction.
+    expect(
+      await screen.findByRole("heading", {
+        name: /assessment history for grace hopper/i,
+      })
+    ).toBeInTheDocument();
+    expect(load).toHaveBeenCalledWith("patient-9");
+    expect(screen.getByText("Resolved")).toBeInTheDocument();
+  });
+
   it("shows an empty-history message for a patient with no completed assessments", async () => {
     const medplum = await withPatient("Grace Hopper");
     renderScreen(() => Promise.resolve([]), medplum);
