@@ -1,15 +1,16 @@
 // The Scoring engine's server-side adapter (ADR-0004/0009). It composes the
 // existing pieces - load the Instrument's config, run the pure `score` kernel,
-// emit the Score Observation(s), raise a Flag per fired Trigger - and persists
-// the results idempotently. It holds NO business rules of its own: scoring math
-// and Trigger evaluation live in the pure `score` kernel; the Flag `Task` is
-// built only by the Worklist module (never inline here). This is the function
-// the Subscription-fired Bot calls; the Bot itself is a thin event unpacker.
+// emit the Score Observation(s), raise the Response's Flag - and persists the
+// results idempotently. It holds NO business rules of its own: scoring math and
+// Trigger evaluation live in the pure `score` kernel; the Flag `Task` is built
+// only by the Worklist module (never inline here). This is the function the
+// Subscription-fired Bot calls; the Bot itself is a thin event unpacker.
 //
 // Idempotency (Subscriptions deliver at-least-once): every write is a conditional
 // create keyed on the Response - the Observation on `derivedFrom` + LOINC code,
-// each Flag on its (Response, Trigger) key - so a redelivered event resolves to
-// the existing resources instead of double-writing (event-flows).
+// the Flag on its (Response, fired trigger codes) key - so a redelivered event
+// resolves to the existing resources instead of double-writing (event-flows). A
+// Response yields at most one Flag, carrying every fired reason (ADR-0011).
 
 import { resolveId, type MedplumClient } from "@medplum/core";
 import type { QuestionnaireResponse } from "@medplum/fhirtypes";
@@ -41,8 +42,9 @@ export interface PersistedScore {
 
 /**
  * What scoring + persisting a Response yields: the numeric Score, the persisted
- * Score Observation(s) (always at least the total; FR-32), and the Flags raised
- * (one per fired Trigger; FR-21/22).
+ * Score Observation(s) (always at least the total; FR-32), and the Flag raised -
+ * at most one per Response, carrying every fired Trigger's reason (FR-21/22;
+ * ADR-0011), so `flags` holds zero or one entry.
  */
 export interface ScoringOutcome {
   readonly score: Score;
@@ -52,11 +54,11 @@ export interface ScoringOutcome {
 
 /**
  * Score a submitted Response and persist the results. Always writes the Score
- * Observation (FR-32); conditionally raises a Flag per fired Trigger; and
- * re-asserts Assignment completion idempotently (ADR-0009). Idempotent under
- * redelivery. Instrument-agnostic - the Instrument is resolved from the
- * Response's `Questionnaire`, and all scoring/Trigger logic is pure config
- * (ADR-0004): a new Instrument never changes this adapter.
+ * Observation (FR-32); conditionally raises the Response's single Flag (all fired
+ * reasons; ADR-0011); and re-asserts Assignment completion idempotently
+ * (ADR-0009). Idempotent under redelivery. Instrument-agnostic - the Instrument
+ * is resolved from the Response's `Questionnaire`, and all scoring/Trigger logic
+ * is pure config (ADR-0004): a new Instrument never changes this adapter.
  */
 export async function scoreResponse(
   medplum: MedplumClient,
@@ -89,7 +91,8 @@ export async function scoreResponse(
   const observationRef =
     observations.length > 0 ? `Observation/${observations[0]!.id}` : undefined;
 
-  // Raise a Flag per fired Trigger via the Worklist module (never inline).
+  // Raise the Response's Flag (one, carrying every fired reason; ADR-0011) via
+  // the Worklist module (never inline). `result.flags` holds zero or one entry.
   const flags: Flag[] = [];
   for (const raised of result.flags) {
     flags.push(

@@ -2,7 +2,8 @@
 // `Task` (`code=flag`; ADR-0002/0003) end to end, mapping the domain Flag to and
 // from FHIR behind this interface - callers speak Flags, never `Task`s.
 //
-// - `raiseFlag` (#19): the Scoring Bot raises a Flag per fired Trigger (ADR-0009).
+// - `raiseFlag` (#19): the Scoring Bot raises a Response's Flag - one carrying
+//   every fired Trigger's reason (ADR-0009/0011).
 // - `listWorklist` (#21): the shared, prioritized Worklist of unresolved Flags
 //   (Open + Acknowledged), ordered by delegating to `PriorityPolicy` (ADR-0007).
 // - `getFlag` (#21): read one Flag with its Response/Score origin, for the Flag

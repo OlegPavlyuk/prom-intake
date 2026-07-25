@@ -18,6 +18,7 @@ import type {
   TriggerDefinition,
 } from "./instrument.js";
 import { bandForScore, weightFor } from "./instrument-queries.js";
+import { highestPriority } from "./priority.js";
 import type { Response, Score } from "./workflow.js";
 
 /**
@@ -50,9 +51,13 @@ export interface RaisedFlag {
   readonly patientId: string;
   /** A freshly-raised Flag is always Open. */
   readonly status: "Open";
-  /** Priority tier the raising Trigger confers (drives Worklist ordering). */
+  /**
+   * Priority tier of the Flag: the highest tier among the Triggers that raised
+   * it (acute-risk outranks urgent outranks routine), so a multi-reason Flag
+   * still ranks by its most urgent reason (ADR-0011). Drives Worklist ordering.
+   */
   readonly priority: FlagPriority;
-  /** Codes of the Trigger(s) that raised the Flag (FR-22). */
+  /** Codes of every Trigger that raised the Flag (FR-22). */
   readonly triggerCodes: readonly string[];
   /** ISO-8601 time the Flag was raised (`authoredOn`). */
   readonly createdAt: string;
@@ -60,8 +65,9 @@ export interface RaisedFlag {
 
 /**
  * What scoring a Response yields: the numeric Score, the Observation(s) to
- * persist (always at least the total, FR-32), and the Flags to raise (one per
- * fired Trigger; v1 does no dedup/linking).
+ * persist (always at least the total, FR-32), and the Flag to raise. A Response
+ * yields **at most one** Flag - carrying every fired Trigger's reason, ranked at
+ * its highest tier (ADR-0011) - so `flags` holds zero or one entry.
  */
 export interface ScoringResult {
   readonly score: Score;
@@ -86,9 +92,14 @@ export function score(
     bandCode: bandForScore(instrument, total)?.code,
   };
 
-  const flags = instrument.triggers
-    .filter((trigger) => triggerFires(trigger, response, instrument, total))
-    .map((trigger) => raiseFlag(trigger, response));
+  // A Response's fired Triggers collapse into a single Flag carrying every
+  // reason (ADR-0011) - grouped by the Response, not per Trigger, so this stays
+  // instrument-agnostic. No fired Trigger means no Flag.
+  const firedTriggers = instrument.triggers.filter((trigger) =>
+    triggerFires(trigger, response, instrument, total)
+  );
+  const flags =
+    firedTriggers.length > 0 ? [raiseFlag(firedTriggers, response)] : [];
 
   return {
     score: scoreResult,
@@ -150,17 +161,21 @@ function emitScoreObservations(
 }
 
 /**
- * The Flag-construction function: build the Open Flag domain object a fired
- * Trigger raises. Authored as of the Response submission (the instant the risk
- * entered the system), so `authoredOn` is deterministic and KPI-computable
- * (NFR-1). Records the raising Trigger's code (FR-22).
+ * The Flag-construction function: build the single Open Flag domain object for a
+ * Response, carrying every fired Trigger's reason (ADR-0011). Authored as of the
+ * Response submission (the instant the risk entered the system), so `authoredOn`
+ * is deterministic and KPI-computable (NFR-1). Records each raising Trigger's
+ * code (FR-22) and takes the highest tier among them. Requires a non-empty list.
  */
-function raiseFlag(trigger: TriggerDefinition, response: Response): RaisedFlag {
+function raiseFlag(
+  triggers: readonly TriggerDefinition[],
+  response: Response
+): RaisedFlag {
   return {
     patientId: response.patientId,
     status: "Open",
-    priority: trigger.priority,
-    triggerCodes: [trigger.code],
+    priority: highestPriority(triggers.map((trigger) => trigger.priority)),
+    triggerCodes: triggers.map((trigger) => trigger.code),
     createdAt: response.submittedAt,
   };
 }

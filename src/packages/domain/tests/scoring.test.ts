@@ -265,8 +265,8 @@ describe("score - acute-risk Trigger (FR-20)", () => {
 
 // --- Multiple Triggers on one Response (FR-21, FR-22) -----------------------
 
-describe("score - multiple Triggers (FR-21, FR-22)", () => {
-  it("raises one Flag per fired Trigger, each recording only the Trigger that raised it", () => {
+describe("score - multiple Triggers on one Response (FR-21, FR-22; ADR-0011)", () => {
+  it("raises a single Flag carrying every fired Trigger's reason, ranked at the highest tier", () => {
     // items 1-3 nearly-every-day (9) + item 4 several-days (1) = 10 (severity),
     // plus Item 9 nearly-every-day (acute-risk): total 13, both Triggers fire.
     const result = score(
@@ -283,24 +283,32 @@ describe("score - multiple Triggers (FR-21, FR-22)", () => {
       PHQ9
     );
     expect(result.score.total).toBe(13);
-    expect(result.flags).toHaveLength(2);
-    // Each Flag carries exactly one Trigger code (v1: no dedup/linking).
-    for (const flag of result.flags) {
-      expect(flag.triggerCodes).toHaveLength(1);
-    }
-    const codes = result.flags.flatMap((f) => f.triggerCodes).sort();
-    expect(codes).toEqual(["phq9-item-9-acute-risk", "phq9-moderate-or-above"]);
+    // One Flag for the Response, not one per Trigger (ADR-0011).
+    expect(result.flags).toHaveLength(1);
+    const flag = result.flags[0]!;
+    // It records every reason (FR-22 audit): both fired Trigger codes.
+    expect([...flag.triggerCodes].sort()).toEqual([
+      "phq9-item-9-acute-risk",
+      "phq9-moderate-or-above",
+    ]);
+    // Priority is the highest tier among the reasons: acute-risk outranks urgent.
+    expect(flag.priority).toBe("acute-risk");
   });
 
-  it("fires both a severity-band and a critical-item Trigger on a different Instrument (config only)", () => {
-    // Synthetic: s1=c (8) + s2=yes (2) = 10: elevated band AND s2 critical-item.
+  it("takes the highest tier among reasons on a different Instrument (config only)", () => {
+    // Synthetic: s1=c (8) + s2=yes (2) = 10: elevated band (urgent) AND s2
+    // critical-item (routine) - one Flag, ranked at the higher tier (urgent).
     const result = score(
       responseFor(SYNTHETIC, { s1: "c", s2: "yes" }),
       SYNTHETIC
     );
-    expect(result.flags).toHaveLength(2);
-    const codes = result.flags.flatMap((f) => f.triggerCodes).sort();
-    expect(codes).toEqual(["syn-elevated", "syn-s2-present"]);
+    expect(result.flags).toHaveLength(1);
+    const flag = result.flags[0]!;
+    expect([...flag.triggerCodes].sort()).toEqual([
+      "syn-elevated",
+      "syn-s2-present",
+    ]);
+    expect(flag.priority).toBe("urgent");
   });
 });
 

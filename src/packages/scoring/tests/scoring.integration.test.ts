@@ -170,8 +170,8 @@ describeIntegration(
       expect(outcome.flags[0]!.triggerCodes).toContain(ACUTE_RISK_TRIGGER);
     });
 
-    it("raises a Flag per fired Trigger, each recording its Trigger (FR-21, FR-22)", async () => {
-      // Total >= 10 AND Item 9 positive: both Triggers fire -> two Flags.
+    it("raises one Flag carrying every fired Trigger's reason, ranked at the highest tier (FR-21, FR-22; ADR-0011)", async () => {
+      // Total >= 10 AND Item 9 positive: both Triggers fire -> one Flag.
       const qr = await submittedResponse(
         withAnswers({
           "phq9-item-1": "nearly-every-day",
@@ -185,9 +185,13 @@ describeIntegration(
       const outcome = await scoreResponse(medplum, qr);
 
       expect(outcome.score.total).toBe(13);
-      const codes = outcome.flags.flatMap((f) => f.triggerCodes).sort();
-      expect(codes).toEqual([ACUTE_RISK_TRIGGER, SEVERITY_TRIGGER].sort());
-      expect(outcome.flags).toHaveLength(2);
+      // One Flag for the Response, both reasons on it, ranked at acute-risk.
+      expect(outcome.flags).toHaveLength(1);
+      const flag = outcome.flags[0]!;
+      expect([...flag.triggerCodes].sort()).toEqual(
+        [ACUTE_RISK_TRIGGER, SEVERITY_TRIGGER].sort()
+      );
+      expect(flag.priority).toBe("acute-risk");
     });
 
     it("re-asserts Assignment completion on the score path (ADR-0009 recovery)", async () => {
@@ -230,7 +234,8 @@ describeIntegration(
         first.flags.map((f) => f.id).sort()
       );
 
-      // And the store agrees: exactly one Observation and two Flag Tasks persist.
+      // And the store agrees: exactly one Observation and one Flag Task persist
+      // (one Flag per Response, both reasons on it; ADR-0011).
       const observations = await medplum.searchResources("Observation", {
         "derived-from": `QuestionnaireResponse/${qr.id}`,
       });
@@ -239,7 +244,7 @@ describeIntegration(
         patient: `Patient/${patientId}`,
         code: `${CS_TASK_CODE}|${TASK_CODE_FLAG}`,
       });
-      expect(flagTasks).toHaveLength(2);
+      expect(flagTasks).toHaveLength(1);
     });
   }
 );
