@@ -227,6 +227,43 @@ export async function getResponse(
 }
 
 /**
+ * List a patient's completed Responses, newest first. A `QuestionnaireResponse`
+ * exists only once submitted (the submit path persists it), so every Response
+ * this returns is a completed one - the assessment history the coordinator
+ * timeline is built from (FR-33). The Scoring module owns turning a persisted
+ * Response into domain facts, so the timeline reads Responses through this entry
+ * point rather than touching the `QuestionnaireResponse` inline
+ * (module-boundaries). Reverse-chronological order is intrinsic to a timeline, so
+ * it is the read's contract (mirroring how `listWorklist` returns an ordered
+ * list), asserted at the seam. Callers get domain answers, never FHIR.
+ */
+export async function findResponsesByPatient(
+  medplum: MedplumClient,
+  patientId: string
+): Promise<SubmittedResponse[]> {
+  const responses = await medplum.searchResources("QuestionnaireResponse", {
+    subject: `Patient/${patientId}`,
+    _sort: "-authored",
+    _count: "1000",
+  });
+  return responses.flatMap((qr) => {
+    const subjectId = resolveId(qr.subject);
+    if (!qr.id || !subjectId || !qr.questionnaire) {
+      return [];
+    }
+    return [
+      {
+        id: qr.id,
+        patientId: subjectId,
+        questionnaireUrl: qr.questionnaire,
+        submittedAt: qr.authored ?? "",
+        answers: answersOf(qr),
+      },
+    ];
+  });
+}
+
+/**
  * Read the persisted total Score of a Response, or `undefined` when none exists.
  * The Scoring module owns the Score `Observation` (module-boundaries), so the
  * Flag detail reads it through this entry point. v1 writes a single total-score

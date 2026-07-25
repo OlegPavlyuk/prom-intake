@@ -42,7 +42,10 @@ never touch `Task`, `Observation`, or tokens directly.
   submission time) and `getScore` (its total Score Observation). The Scoring engine is the module that
   turns a persisted Response into scored domain facts, so it owns reading them back - the Flag detail
   reads the answers and Score through these entry points, never by touching the
-  `QuestionnaireResponse`/`Observation` inline.
+  `QuestionnaireResponse`/`Observation` inline. #46 added `findResponsesByPatient` - a patient's
+  completed Responses, newest first - so the assessment-history timeline (FR-33) reads the Responses
+  it lists through the module rather than searching `QuestionnaireResponse` inline (a Response exists
+  only once submitted, so this read is exactly the patient's completed-assessment history).
 - **`PriorityPolicy` scope today:** the pure ordering kernel landed (#20) as `PriorityPolicy.order(flags)`
   in the `domain` package (`domain/priority.ts`) - a single deterministic query-time priority function
   (ADR-0007) implementing FR-24/25/26: acute-risk tier first, then urgent, then routine; within a tier
@@ -59,7 +62,11 @@ never touch `Task`, `Observation`, or tokens directly.
   `listWorklist` returns the organization's unresolved Flags - both Open and Acknowledged - ordered by
   delegating to `PriorityPolicy.order` (ordering is not re-implemented; ADR-0007), excluding Resolved
   via a coded search (`Task?code=flag&status:not=completed`); and `getFlag` reads one Flag with the
-  Response/Score origin the Flag detail composes from. #22 landed the **single-owner claim**:
+  Response/Score origin the Flag detail composes from. #46 added `findFlagsByPatient` - one patient's
+  **full** Flag history, every state including Resolved, with each Flag's Response/Score origin - so
+  the assessment-history timeline (FR-33) can show a Response's Flag status without touching the Flag
+  `Task` inline; it is keyed on the patient (not priority-ordered like `listWorklist`, which is the
+  active Worklist). #22 landed the **single-owner claim**:
   `acknowledge` transitions an Open Flag to Acknowledged (`businessStatus` Open->Acknowledged; shadow
   `status` ready->in-progress, ADR-0003) for one coordinator, under **optimistic concurrency** - a
   compare-and-swap guarded by `If-Match` on the read version (ADR-0006). It also refuses a claim on a
@@ -123,11 +130,14 @@ dependency-cruiser via the `/setup-ts-deep-modules` skill (entry-point boundary,
   the deep-module seam is unchanged. Nothing in `src/packages/**` may depend on `src/apps/**` or on
   React/DOM; the two apps may not import each other. Enforced by dependency-cruiser.
   - Cross-module **composition** that a screen needs but no single module owns lives in the app at the
-    top of the graph (e.g. `assign/assignInstrument.ts`, and the Worklist's `getFlagDetail`, which
-    joins the Flag, its Response answers + Score, the Instrument config, and the Patient). Placing the
-    Flag-detail composition in the app is also what keeps it acyclic: the Scoring engine already depends
-    on the Worklist (`raiseFlag`), so the Worklist cannot depend back on the Scoring engine to read the
-    Score - the app, above both, composes them.
+    top of the graph (e.g. `assign/assignInstrument.ts`; the Worklist's `getFlagDetail`, which joins
+    the Flag, its Response answers + Score, the Instrument config, and the Patient; and the patient
+    timeline's `timeline/timelineData.ts` `loadPatientTimeline`, which joins each of a patient's
+    Responses (Scoring) with its Score + band (Scoring + Instrument) and its Flag status (Worklist)
+    for FR-33). Placing the Flag-detail composition in the app is also what keeps it acyclic: the
+    Scoring engine already depends on the Worklist (`raiseFlag`), so the Worklist cannot depend back on
+    the Scoring engine to read the Score - the app, above both, composes them (the timeline joins the
+    same two modules the same way).
 - **Delivery layer.** `issueAccessLink` returns a raw token, not a URL; the **Coordinator app**
   assembles the patient-facing Access link from it. This keeps the Access-link module
   delivery-agnostic - a future SMS/email/portal channel never touches it.

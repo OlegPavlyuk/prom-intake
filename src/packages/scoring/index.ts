@@ -13,6 +13,7 @@ export {
   scoreResponse,
   getResponse,
   getScore,
+  findResponsesByPatient,
   UnscorableResponseError,
   type PersistedScore,
   type ScoringOutcome,
