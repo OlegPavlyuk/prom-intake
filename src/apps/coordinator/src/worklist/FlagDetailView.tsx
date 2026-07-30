@@ -39,6 +39,11 @@ export interface FlagDetailViewProps {
   /** Return to the Worklist. */
   readonly onBack: () => void;
   /**
+   * Open this patient's assessment history / timeline (FR-33). When omitted, the
+   * link is hidden (e.g. a context with no timeline to navigate to).
+   */
+  readonly onViewHistory?: () => void;
+  /**
    * Claim (Acknowledge) this Flag for the signed-in coordinator (FR-26). When
    * omitted, the claim control is hidden (e.g. a Flag that is not Open).
    */
@@ -92,6 +97,7 @@ const REASON_LABEL: Record<ResolutionReason, string> = Object.fromEntries(
 export function FlagDetailView({
   detail,
   onBack,
+  onViewHistory,
   onAcknowledge,
   claiming,
   notice,
@@ -105,9 +111,16 @@ export function FlagDetailView({
   return (
     <Stack maw={720} gap="lg">
       <Group justify="space-between" align="center">
-        <Button variant="subtle" onClick={onBack}>
-          Back to Worklist
-        </Button>
+        <Group gap="xs">
+          <Button variant="subtle" onClick={onBack}>
+            Back to Worklist
+          </Button>
+          {onViewHistory && (
+            <Button variant="subtle" onClick={onViewHistory}>
+              View patient history
+            </Button>
+          )}
+        </Group>
         <Group gap="xs">
           <Badge
             color={flag.priority === "acute-risk" ? "red" : "gray"}

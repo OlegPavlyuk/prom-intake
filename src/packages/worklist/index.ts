@@ -6,6 +6,9 @@
 //   every fired Trigger's reason (ADR-0009/0011).
 // - `listWorklist` (#21): the shared, prioritized Worklist of unresolved Flags
 //   (Open + Acknowledged), ordered by delegating to `PriorityPolicy` (ADR-0007).
+// - `findFlagsByPatient` (#46): one patient's full Flag history - every state,
+//   including Resolved - so the assessment timeline can show a Response's Flag
+//   status (FR-33). Not priority-ordered; keyed on the patient, not the Worklist.
 // - `getFlag` (#21): read one Flag with its Response/Score origin, for the Flag
 //   detail's FR-29 clinical signal.
 // - `acknowledge` (#22): a coordinator claims an Open Flag single-owner under
@@ -20,6 +23,7 @@
 export {
   raiseFlag,
   listWorklist,
+  findFlagsByPatient,
   getFlag,
   acknowledge,
   resolve,

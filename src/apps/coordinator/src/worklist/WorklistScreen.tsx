@@ -46,6 +46,11 @@ export interface WorklistScreenProps {
     flagId: string,
     resolution: Resolution
   ) => Promise<ResolveResult>;
+  /**
+   * Open a patient's assessment history / timeline from a Flag's detail (FR-33).
+   * When omitted, the Flag detail hides the link.
+   */
+  readonly onViewHistory?: (patient: { id: string; name: string }) => void;
 }
 
 const PRIORITY_LABEL: Record<FlagPriority, string> = {
@@ -63,6 +68,7 @@ export function WorklistScreen({
   loadDetail,
   acknowledge,
   resolve,
+  onViewHistory,
 }: WorklistScreenProps): JSX.Element {
   const medplum = useMedplum();
   const doLoad = useCallback(
@@ -177,6 +183,15 @@ export function WorklistScreen({
           setNotice(null);
           setResolveNotice(null);
         }}
+        onViewHistory={
+          onViewHistory
+            ? () =>
+                onViewHistory({
+                  id: detail.flag.patientId,
+                  name: detail.patientName,
+                })
+            : undefined
+        }
         onAcknowledge={() => void claimFlag()}
         claiming={claiming}
         notice={notice}

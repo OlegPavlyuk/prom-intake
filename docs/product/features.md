@@ -22,6 +22,7 @@ Features map to the requirements in [`requirements.md`](requirements.md).
 | Coordinator notifications | Push (e.g. email) for acute-risk Flags | No (fast follow) | - | Idea |
 | Outstanding-assignment view | "Who hasn't responded yet" screen | No | FR-9 (data only) | Idea |
 | Second instrument (GAD-7) | Prove genericity by adding an instrument as config | No | FR-4 | Idea |
+| Assessment history / patient timeline | Read-only coordinator view of a patient's completed Responses + Scores over time, flagged or not (first slice of Longitudinal tracking) | No (Iteration 2) | FR-33 | In progress (#46) |
 | Longitudinal tracking | Trend a patient's Scores over time | No | - | Idea |
 | Recurring assignments | Scheduled re-assessment | No | - | Idea |
 | Reporting / metrics dashboard | Surface the KPIs the data model already supports | No | NFR-1 | Idea |

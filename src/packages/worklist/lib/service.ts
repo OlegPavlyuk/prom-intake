@@ -91,6 +91,31 @@ export interface FlagRecord extends FlagOriginRefs {
 }
 
 /**
+ * List all of a patient's Flags - every lifecycle state, including Resolved -
+ * each with the Response/Score origin it was raised from. Unlike
+ * {@link listWorklist} (the active, unresolved Worklist), this is the full Flag
+ * history for one patient, so the assessment timeline can show each Response's
+ * Flag status (none / Open / Acknowledged / Resolved; FR-33). It does not order
+ * by priority - the timeline is keyed on its Responses, not on the Worklist
+ * ranking - so `PriorityPolicy` is deliberately not applied here. Only this
+ * module reads the Flag `Task`; callers get domain Flags plus plain references.
+ */
+export async function findFlagsByPatient(
+  medplum: MedplumClient,
+  patientId: string
+): Promise<FlagRecord[]> {
+  const tasks = await medplum.searchResources("Task", {
+    code: `${CS_TASK_CODE}|${TASK_CODE_FLAG}`,
+    patient: `Patient/${patientId}`,
+    _count: "1000",
+  });
+  return tasks.map((task) => ({
+    flag: fromFlagTask(task),
+    ...flagOrigin(task),
+  }));
+}
+
+/**
  * Read a single Flag by id, with the origin references (the Response it was
  * raised from, the Score it focuses on) the Flag detail needs to compose the
  * FR-29 clinical signal. Only this module reads the Flag `Task`; callers get a

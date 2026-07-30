@@ -81,6 +81,24 @@ describe("FlagDetailView", () => {
     expect(screen.getByText("Moderate")).toBeInTheDocument();
   });
 
+  it("offers a link into the patient's history when navigation is wired (FR-33)", async () => {
+    const onViewHistory = vi.fn();
+    renderView(detail(), { onViewHistory });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /view patient history/i })
+    );
+    expect(onViewHistory).toHaveBeenCalledOnce();
+  });
+
+  it("hides the history link when no navigation is wired", () => {
+    renderView(detail());
+
+    expect(
+      screen.queryByRole("button", { name: /view patient history/i })
+    ).not.toBeInTheDocument();
+  });
+
   it("highlights the acute-risk Trigger among the reasons the Flag was raised", () => {
     renderView(detail());
 
