@@ -1,9 +1,64 @@
 # PROM Intake
 
-Standardized patient self-reports (PROMs), scored into clinical signals and surfaced on a
-prioritized Worklist for Care Coordinators. Built on **Medplum/FHIR**. See
-[`docs/product/`](docs/product/) for the WHAT/WHY and [`docs/architecture/`](docs/architecture/) for
-the HOW; start with [`docs/workflows/OPERATING_MANUAL.md`](docs/workflows/OPERATING_MANUAL.md).
+Clinical PROM triage built on **Medplum/FHIR**. Care Coordinators assign standardized patient
+questionnaires (PHQ-9 first); patients complete them through secure, account-less links; every
+submission is scored automatically the moment it arrives; high-risk answers raise Flags; and
+coordinators work a single, priority-ordered Worklist - instead of an unread pile of paper forms.
+
+**The flow:** assign -> complete -> score -> flag -> worklist -> resolve.
+
+```mermaid
+flowchart LR
+  patient([Patient]) -->|opens Access link, submits Response| app[PROM Intake App]
+  coord([Care Coordinator]) -->|assigns, works Worklist| app
+  app <-->|FHIR API, Bots, Subscriptions| medplum[(Medplum / FHIR server)]
+  coord -.->|authenticated login| medplum
+```
+
+## Highlights
+
+- **FHIR-idiomatic clinical modeling.** Instruments are `Questionnaire`s (with SDC `itemWeight`
+  scoring), Responses are `QuestionnaireResponse`s, Scores are `Observation`s, and Assignments and
+  Flags are `Task`s with explicit modeling conventions
+  ([ADR-0001](docs/adr/0001-assignment-as-fhir-task.md),
+  [ADR-0002](docs/adr/0002-flag-as-fhir-task.md),
+  [ADR-0003](docs/adr/0003-task-modeling-conventions.md)).
+- **A generic, config-driven PROM engine.** Scoring, severity bands, and trigger rules (including
+  the acute-risk item) are Instrument *configuration*, not code - onboarding another instrument
+  changes no engine internals ([ADR-0004](docs/adr/0004-scoring-and-trigger-engine.md)).
+- **Account-less patient access, carefully bounded.** Patients reach exactly one questionnaire via
+  a hashed, single-use, expiring token. The only unauthenticated entry point is one webhook Bot
+  whose least-privilege `AccessPolicy` can create a single response and nothing else - no PHI
+  reads, ever ([ADR-0005](docs/adr/0005-access-link-security-model.md)).
+- **Bots + Subscriptions pipeline.** Submission validates and consumes the token atomically; a
+  Subscription-fired scoring Bot persists the Score and raises Flags idempotently under
+  at-least-once delivery ([ADR-0009](docs/adr/0009-bots-as-adapters-over-shared-domain-logic.md)).
+- **Safety boundary as a first-class design concern.** The patient-facing Crisis Response fires
+  client-side the instant an acute-risk item is answered; the clinical Flag is raised server-side
+  on submission. Two independent mechanisms, deliberately allowed to diverge.
+- **Real Medplum in CI - never a mocked FHIR server.** Integration tests provision a throwaway
+  Medplum project inside GitHub Actions, so there is no stored secret and no mock drift
+  ([ADR-0008](docs/adr/0008-integration-tests-against-real-medplum.md)).
+- **Enforced deep-module boundaries.** Packages are imported only through their entry points;
+  dependency-cruiser fails the build on violations (`npm run lint:boundaries`).
+- **Spec-driven, AI-assisted development.** Every PR traces back to a reviewed spec issue through
+  vertical-slice tickets; hard decisions live in 11 [ADRs](docs/adr/); the whole process is
+  documented in the [Operating Manual](docs/workflows/OPERATING_MANUAL.md) and executed with AI
+  agents as a first-class part of the workflow.
+
+PROM Intake is a portfolio project, and says so openly
+([`docs/project/portfolio-goals.md`](docs/project/portfolio-goals.md)) - but it is designed,
+documented, and reviewed as if for a real care organization, because doing so is the demonstration.
+
+## Documentation map
+
+| What | Where |
+| ---- | ----- |
+| Product - WHAT & WHY | [`docs/product/`](docs/product/) |
+| Architecture - HOW | [`docs/architecture/`](docs/architecture/) (start with the [overview](docs/architecture/overview.md)) |
+| Decisions | [`docs/adr/`](docs/adr/) |
+| Domain glossary | [`CONTEXT.md`](CONTEXT.md) |
+| Process | [`docs/workflows/OPERATING_MANUAL.md`](docs/workflows/OPERATING_MANUAL.md) |
 
 ## Prerequisites
 
@@ -79,6 +134,7 @@ Medplum). Full details: [`docs/architecture/infrastructure.md`](docs/architectur
 
 - `src/packages/<name>/` - deep modules (import only via entry points; see
   [`src/packages/README.md`](src/packages/README.md)).
+- `src/apps/` - the two credential-isolated React apps (coordinator + patient).
 - `scripts/` - operational scripts (e.g. Medplum provisioning).
 - `infra/medplum/` - local Medplum compose stack.
 - `docs/` - product, architecture, ADRs, specs, workflows.
