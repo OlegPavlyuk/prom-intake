@@ -39,7 +39,14 @@ integration tests run in CI.
 
 ## Continuous Delivery / Deployment
 
-_TBD - no deploy target yet. Filled when the coordinator/patient apps and Bots gain a deploy path._
+Settled in [ADR-0012](../adr/0012-gcp-public-demo-deployment.md) (planned, spec #55): a GitHub
+Actions deploy workflow, authenticated to GCP via **Workload Identity Federation** (keyless - no
+cloud credential stored), runs on every push to `main` after CI is green and on manual dispatch.
+It builds both SPA bundles, ships them + the Caddy/compose config to the demo VM, redeploys the
+Bots, and **resets + re-seeds the demo project on every deployment**; a second `workflow_dispatch`
+workflow resets the demo on demand. Each deploy ends with an HTTPS smoke step (Medplum health,
+both apps served, seeded PHQ-9 queryable, `/webhook` round-trip) that fails the deploy loudly.
+This section is updated with the concrete workflow files as the spec's tickets land.
 
 ## Branch protection
 

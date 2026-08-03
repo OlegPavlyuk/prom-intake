@@ -10,7 +10,7 @@ Application/deploy environments are still TBD.
 | ----------- | ------- | ----------- |
 | **Local dev** | Self-contained via [`infra/medplum/docker-compose.yml`](../../infra/medplum/docker-compose.yml) (Postgres + Redis + `medplum-server`) | `npm run medplum:provision` writes `.env` |
 | **CI** | Same compose stack, ephemeral per run | Provisioned at runtime; no stored secret |
-| dev / staging / prod (app) | _TBD_ | _TBD_ |
+| **Public demo** (planned, spec #55) | Same compose stack on one GCE VM behind Caddy/HTTPS ([ADR-0012](../adr/0012-gcp-public-demo-deployment.md)) | Medplum admin + demo login in Actions secrets; cloud auth is keyless (WIF) |
 
 ## Local Medplum test project
 
@@ -197,10 +197,15 @@ it is invoked by a **Subscription** on `QuestionnaireResponse` creation:
 
 ## Cloud resources
 
-_TBD - no cloud footprint yet; the local/CI Medplum is containerised. Filled when a hosted Medplum
-and app hosting are chosen._
+Settled in [ADR-0012](../adr/0012-gcp-public-demo-deployment.md) (planned, spec #55): a single GCE
+VM runs the compose stack behind Caddy (serving both SPA bundles and proxying Medplum) on three
+sslip.io origins (`app.` / `forms.` / `api.`) with automatic Let's Encrypt HTTPS. Time-boxed to the
+free-credit window; teardown is `terraform destroy`. This section is filled in with concrete
+resources as the spec's tickets land.
 
 ## Infrastructure as Code
 
-_TBD - `infra/medplum/` holds the compose definition today; broader IaC (Terraform/CDK) is deferred
-until there is a cloud deploy target._
+Terraform in `infra/gcp/` (planned, spec #55; [ADR-0012](../adr/0012-gcp-public-demo-deployment.md)):
+VM, static IP, firewall, deploy service account, Workload Identity Federation for GitHub Actions,
+GCS state bucket, billing alert. `infra/medplum/` remains the compose definition shared by local,
+CI, and the demo VM.
