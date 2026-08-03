@@ -25,7 +25,7 @@ demonstration.
 - **Patient data management** - assignment, response capture, and structured clinical records.
 - **React** - the Care Coordinator dashboard/Worklist and the patient-facing completion flow.
 - **Node.js / TypeScript** - scoring and workflow logic.
-- **AWS / cloud deployment** - the application deployed to the cloud with CI/CD.
+- **Cloud deployment** - the application deployed to the cloud (GCP; [ADR-0012](../adr/0012-gcp-public-demo-deployment.md)) with CI/CD.
 - **Research & discovery** - primary-source verification of clinical facts (see
   [`docs/research/`](../research/)).
 - **Spec-driven development** - the full workflow in
