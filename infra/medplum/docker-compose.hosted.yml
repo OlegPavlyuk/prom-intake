@@ -1,0 +1,63 @@
+# Hosted-runtime overlay (ADR-0012, T16). Layered ON TOP of the base
+# docker-compose.yml on the demo VM:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.hosted.yml up -d --wait
+#
+# It adds Caddy as the single public front door (serves both built SPA bundles,
+# reverse-proxies Medplum, terminates TLS with automatic Let's Encrypt over
+# sslip.io) and makes every service restart across VM reboots.
+#
+# The base stack is otherwise deployed exactly as CI exercises it. The hardened
+# hosted medplum.config.json is shipped in place of the local one at the same
+# mount path the base compose already uses, so no service definition here needs
+# to touch Medplum's config or command.
+#
+# Caddy is the only public component (ADR-0012). The base stack publishes
+# Postgres/Redis/Medplum on the VM host for local/CI convenience; here the overlay
+# `!reset []`s those port mappings so nothing but Caddy's 80/443 is even bound on
+# the host - belt-and-braces with the T15 firewall (which already admits only
+# 80/443). Caddy still reaches Medplum over the private Docker network by service
+# name, and Postgres/Redis keep the base stack's internal-network credentials. The
+# public security boundary is Medplum's own auth, which the hosted config hardens
+# (registerEnabled:false + a generated super-admin, never admin@example.com).
+services:
+  postgres:
+    restart: unless-stopped
+    ports: !reset []
+
+  redis:
+    restart: unless-stopped
+    ports: !reset []
+
+  medplum-server:
+    restart: unless-stopped
+    ports: !reset []
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      medplum-server:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Injected from the deploy dir's .env (terraform output). `:?` fails the
+      # `up` loudly if a host is missing rather than issuing a cert for "".
+      CADDY_COORDINATOR_HOST: ${COORDINATOR_HOST:?set COORDINATOR_HOST in .env}
+      CADDY_PATIENT_HOST: ${PATIENT_HOST:?set PATIENT_HOST in .env}
+      CADDY_API_HOST: ${API_HOST:?set API_HOST in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Built SPA bundles, shipped by the deploy script alongside this file.
+      - ./coordinator:/srv/coordinator:ro
+      - ./patient:/srv/patient:ro
+      # Persist issued certificates + Caddy state across restarts so a redeploy
+      # does not re-hit Let's Encrypt (rate limits are shared on sslip.io).
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

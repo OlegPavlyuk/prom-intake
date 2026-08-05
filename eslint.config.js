@@ -5,12 +5,15 @@ import globals from "globals";
 export default tseslint.config(
   {
     ignores: [
-      "dist/**",
+      // Build output at the root and per-app (src/apps/<app>/dist), never linted.
+      "**/dist/**",
       "coverage/**",
       "node_modules/**",
       ".husky/**",
       ".agents/**",
       ".claude/**",
+      // Hosted-deploy staging dir (built bundles + rendered config, gitignored).
+      "infra/gcp/.deploy/**",
     ],
   },
   js.configs.recommended,

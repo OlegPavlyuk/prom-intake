@@ -2,8 +2,8 @@
 
 **Status:** Accepted (v1) - established at the first-code milestone (T1, issue #13). Covers the
 Medplum test project used by the integration harness ([ADR-0008](../adr/0008-integration-tests-against-real-medplum.md))
-and the public GCP demo substrate ([Cloud resources](#cloud-resources), [ADR-0012](../adr/0012-gcp-public-demo-deployment.md)).
-The demo's application runtime and CD pipeline land in later tickets (T16/T17).
+and the public GCP demo ([Cloud resources](#cloud-resources) substrate + [Hosted runtime](#hosted-runtime-t16),
+[ADR-0012](../adr/0012-gcp-public-demo-deployment.md)). The CD pipeline that automates the deploy lands in T17.
 
 ## Environments
 
@@ -201,8 +201,9 @@ it is invoked by a **Subscription** on `QuestionnaireResponse` creation:
 The public portfolio demo runs on a **single Google Compute Engine VM** in
 `prom-intake-demo` (EU region, default `europe-west1`), provisioned by Terraform under
 [`infra/gcp/`](../../infra/gcp/) per [ADR-0012](../adr/0012-gcp-public-demo-deployment.md). The
-substrate (this ticket, T15) is the VM, its network, its deploy identity, and a cost guardrail; the
-runtime (Caddy + the existing compose stack) and the CD pipeline land in T16/T17.
+substrate (T15) is the VM, its network, its deploy identity, and a cost guardrail; the runtime
+(Caddy + the existing compose stack) is [Hosted runtime](#hosted-runtime-t16) (T16); the CD pipeline
+that automates the deploy lands in T17.
 
 | Resource | What it is |
 | -------- | ---------- |
@@ -244,3 +245,88 @@ committed** - `*.tfvars` (except the committed `*.tfvars.example`), state, and t
 plugin cache are gitignored, and the whole design carries zero cloud keys. CI runs
 `terraform fmt -check` + `terraform validate` on `infra/gcp/` (validate only, no credentials); see
 [`cicd.md`](cicd.md). Full runbook: [`infra/gcp/README.md`](../../infra/gcp/README.md).
+
+## Hosted runtime (T16)
+
+The application layer the substrate hosts (this ticket) - the same
+[`infra/medplum/docker-compose.yml`](../../infra/medplum/docker-compose.yml) stack CI exercises,
+plus **Caddy** as the single public front door, brought up by a scripted manual deploy that T17
+turns into the CD pipeline. Per [ADR-0012](../adr/0012-gcp-public-demo-deployment.md).
+
+### Topology - Caddy is the only public component
+
+Caddy ([`infra/caddy/Caddyfile`](../../infra/caddy/Caddyfile)) terminates 80/443 for all three
+origin-isolated `sslip.io` hosts and reaches Medplum over the private Docker network
+(`medplum-server:8103`, never published to the internet):
+
+| Host | Caddy serves |
+| ---- | ------------ |
+| `app.<ip>.sslip.io` | Coordinator SPA bundle (history-mode fallback to `index.html`) |
+| `forms.<ip>.sslip.io` | Patient SPA bundle **plus** `/webhook/*` reverse-proxied to Medplum |
+| `api.<ip>.sslip.io` | Reverse proxy to `medplum-server` |
+
+The `forms.` `/webhook/*` route is the one hard topological constraint: Medplum sends no CORS
+headers on `/webhook`, so the account-less patient page calls it **same-origin** and Caddy proxies
+it to Medplum (ADR-0005; the [Medplum Bots](#medplum-bots) section). The hostnames encode the
+reserved static IP, so the Caddyfile is **IP-agnostic** - the deploy script injects the three hosts
+as `{$CADDY_*}` environment variables from `terraform output`. Caddy issues Let's Encrypt
+certificates automatically over the `sslip.io` wildcard DNS and redirects plain HTTP to HTTPS; the
+`caddy_data` volume persists them across restarts (the shared `sslip.io` suffix has rate limits).
+
+### The overlay and the hardened config variant
+
+[`infra/medplum/docker-compose.hosted.yml`](../../infra/medplum/docker-compose.hosted.yml) is layered
+**on top of** the base compose file on the VM
+(`docker compose -f docker-compose.yml -f docker-compose.hosted.yml up -d --wait`). It only adds the
+`caddy` service and a `restart: unless-stopped` on every service - the base stack deploys exactly as
+CI runs it. Postgres and Redis keep the base stack's internal-network credentials: they are never
+publicly reachable (the firewall opens only 80/443), so the public security boundary is Medplum's
+own auth.
+
+That boundary is hardened by a deploy-specific config variant,
+[`medplum.config.hosted.example.json`](../../infra/medplum/medplum.config.hosted.example.json) - a
+committed **example with `__PLACEHOLDER__` tokens**. The deploy script substitutes the `api.`/`app.`
+hosts and generated super-admin credentials and ships the result as `medplum.config.json` (the real
+file holds a secret and is gitignored). It differs from the local config in three ways: public HTTPS
+URLs on the `api.`/`app.` origins (with `allowedOrigins` CORS-allowing both the `app.` and `forms.`
+origins); `registerEnabled: false` (no public sign-up); and a generated `defaultSuperAdmin*` so the
+default `admin@example.com` / `medplum_admin` pair **never exists** (that config only seeds a super
+admin on an empty database).
+
+### Provisioning under disabled registration
+
+Because `registerEnabled: false` rejects the open-registration flow `provision-local` uses, the
+hosted project is bootstrapped through the generated **super admin** instead
+([`scripts/provision-hosted.ts`](../../scripts/provision-hosted.ts)): super-admin login ->
+find-or-create the demo `Project` -> invite the demo coordinator as a project admin with a known
+password (`sendEmail: false`, headless; `upsert: true`, idempotent) -> mint a `ClientApplication`.
+It writes the same `.env` (client credentials) + `.dev-user.json` (coordinator login) the local flow
+produces, so [`medplum:seed`](#local-medplum-test-project) and
+[`medplum:deploy-bots`](#medplum-bots) then run **unchanged** (Bots stay `vmcontext`, ADR-0012). It
+is idempotent: a surviving project (its `.env` creds still authenticate) is reused; only a wiped
+server re-provisions.
+
+### Deploy + smoke scripts
+
+`npm run deploy:hosted` ([`scripts/deploy-hosted.ts`](../../scripts/deploy-hosted.ts)) is the whole
+runtime as one idempotent script - the payload T17 automates:
+
+1. read the `sslip.io` hosts from `terraform -chdir=infra/gcp output`;
+2. load-or-generate the hosted secrets - env override for T17's Actions secrets, else a gitignored
+   `infra/gcp/.deploy-secrets.json` generated once and reused (so the super-admin password stays
+   consistent with what the server seeded on first boot);
+3. render the hardened config; build the coordinator bundle with hosted `VITE_*` values;
+4. ship compose + overlay + Caddyfile + config + bundle to the VM **over IAP** and bring the stack
+   up;
+5. wait for Medplum health over public HTTPS (proves Let's Encrypt issued);
+6. provision (super-admin) -> seed -> deploy-bots;
+7. build the patient bundle with the now-known `/webhook/<membership-id>` path, ship it, and run the
+   smoke check.
+
+`npm run smoke:hosted` ([`scripts/smoke-hosted.ts`](../../scripts/smoke-hosted.ts)) is the
+deployment's behavioural seam (the deploy's final gate; reused verbatim by T17). Lightweight,
+**HTTP-level only** (no browser): over public HTTPS it asserts Medplum health on `api.`; `app.` and
+`forms.` serve their bundles (200 + `<title>` marker); the seeded PHQ-9 `Questionnaire` is queryable
+(client-credentials read); and an Access-link `open` round-trips through `forms./webhook/*` (a bogus
+token yields the Bot's own `{ status: "not-found" }`, proving the same-origin proxy reaches the Bot).
+It exits non-zero on any failure. Deploys are reached only over IAP - there is no public SSH.
