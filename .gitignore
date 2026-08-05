@@ -33,3 +33,19 @@ Thumbs.db
 
 # Prototype scratch (throwaway prototype branches keep their own files)
 .scratch/tmp/
+
+# Terraform (infra/gcp) - never commit state, provider plugins, or real tfvars
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc

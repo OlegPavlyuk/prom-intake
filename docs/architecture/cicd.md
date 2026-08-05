@@ -10,11 +10,13 @@ split into two jobs so fast feedback never waits on Medplum:
 
 | Job | Steps | Needs Medplum |
 | --- | ----- | ------------- |
-| **checks** | `typecheck` -> `lint` -> `lint:boundaries` -> `format:check` -> `test:unit` | no |
+| **checks** | `typecheck` -> `lint` -> `lint:boundaries` -> `format:check` -> `test:unit` -> `terraform fmt -check` + `validate` (`infra/gcp/`) | no |
 | **integration** | bring up Medplum (docker compose) -> `medplum:provision` -> `test:integration` -> tear down | yes |
 
 The **boundary lint** (`lint:boundaries`, dependency-cruiser) enforces the deep-module rules from
-[`module-boundaries.md`](module-boundaries.md). All steps must pass before merge.
+[`module-boundaries.md`](module-boundaries.md). The **Terraform** step runs `fmt -check` and
+`validate` against [`infra/gcp/`](../../infra/gcp/) with **no cloud credentials** (schema validation
+only, `init -backend=false`) - it never touches GCP. All steps must pass before merge.
 
 ### Real Medplum in CI (ADR-0008)
 
