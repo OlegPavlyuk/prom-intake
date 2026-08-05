@@ -25,6 +25,21 @@ jobs:
       - run: npm run lint:boundaries
       - run: npm run format:check
       - run: npm run test:unit
+      # Infra-as-code checks (no cloud credentials - fmt + schema validate only).
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+      - name: Terraform fmt (infra/gcp)
+        run: terraform -chdir=infra/gcp fmt -check -recursive
+      - name: Terraform validate (infra/gcp)
+        run: |
+          terraform -chdir=infra/gcp init -backend=false -input=false
+          terraform -chdir=infra/gcp validate
+      - name: Terraform validate (infra/gcp/bootstrap)
+        run: |
+          terraform -chdir=infra/gcp/bootstrap init -backend=false -input=false
+          terraform -chdir=infra/gcp/bootstrap validate
 
   integration:
     name: integration (real Medplum)

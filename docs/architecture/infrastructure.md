@@ -1,8 +1,9 @@
 # Infrastructure
 
 **Status:** Accepted (v1) - established at the first-code milestone (T1, issue #13). Covers the
-Medplum test project used by the integration harness ([ADR-0008](../adr/0008-integration-tests-against-real-medplum.md)).
-Application/deploy environments are still TBD.
+Medplum test project used by the integration harness ([ADR-0008](../adr/0008-integration-tests-against-real-medplum.md))
+and the public GCP demo substrate ([Cloud resources](#cloud-resources), [ADR-0012](../adr/0012-gcp-public-demo-deployment.md)).
+The demo's application runtime and CD pipeline land in later tickets (T16/T17).
 
 ## Environments
 
@@ -10,7 +11,7 @@ Application/deploy environments are still TBD.
 | ----------- | ------- | ----------- |
 | **Local dev** | Self-contained via [`infra/medplum/docker-compose.yml`](../../infra/medplum/docker-compose.yml) (Postgres + Redis + `medplum-server`) | `npm run medplum:provision` writes `.env` |
 | **CI** | Same compose stack, ephemeral per run | Provisioned at runtime; no stored secret |
-| **Public demo** (planned, spec #55) | Same compose stack on one GCE VM behind Caddy/HTTPS ([ADR-0012](../adr/0012-gcp-public-demo-deployment.md)) | Medplum admin + demo login in Actions secrets; cloud auth is keyless (WIF) |
+| **Public demo** (GCP) | Same compose stack on one GCE VM behind Caddy ([ADR-0012](../adr/0012-gcp-public-demo-deployment.md)) | Keyless CD via Workload Identity Federation; Medplum admin/demo logins in Actions secrets, no cloud keys ([Cloud resources](#cloud-resources)) |
 
 ## Local Medplum test project
 
@@ -197,15 +198,49 @@ it is invoked by a **Subscription** on `QuestionnaireResponse` creation:
 
 ## Cloud resources
 
-Settled in [ADR-0012](../adr/0012-gcp-public-demo-deployment.md) (planned, spec #55): a single GCE
-VM runs the compose stack behind Caddy (serving both SPA bundles and proxying Medplum) on three
-sslip.io origins (`app.` / `forms.` / `api.`) with automatic Let's Encrypt HTTPS. Time-boxed to the
-free-credit window; teardown is `terraform destroy`. This section is filled in with concrete
-resources as the spec's tickets land.
+The public portfolio demo runs on a **single Google Compute Engine VM** in
+`prom-intake-demo` (EU region, default `europe-west1`), provisioned by Terraform under
+[`infra/gcp/`](../../infra/gcp/) per [ADR-0012](../adr/0012-gcp-public-demo-deployment.md). The
+substrate (this ticket, T15) is the VM, its network, its deploy identity, and a cost guardrail; the
+runtime (Caddy + the existing compose stack) and the CD pipeline land in T16/T17.
+
+| Resource | What it is |
+| -------- | ---------- |
+| VM (`e2-medium`, Debian 12) | Runs the existing [`infra/medplum/docker-compose.yml`](../../infra/medplum/docker-compose.yml) stack behind Caddy. Docker + Compose are installed by a startup script; the VM has a dedicated least-privilege runtime service account (logs/metrics only). |
+| Custom VPC + subnet | Default-deny network; nothing is reachable except through the two firewall rules. |
+| Reserved static external IP | Stable IP the `sslip.io` hostnames encode - `app.<ip>.sslip.io` (coordinator), `forms.<ip>.sslip.io` (patient), `api.<ip>.sslip.io` (Medplum), preserving ADR-0010 origin isolation. |
+| Firewall | 80/443 open to the internet (Caddy front door); **SSH 22 only from the IAP range** `35.235.240.0/20` - there is no public SSH port. |
+| Deploy service account + Workload Identity Federation | GitHub Actions (`OlegPavlyuk/prom-intake`) impersonates the deploy SA via WIF to reach the VM over IAP. **No service-account key exists anywhere** (keyless CD, ADR-0012). Its rights are scoped to an IAP-tunnelled OS Login deploy. |
+| Billing budget | Alerts on the demo project at 50/90/100% of the configured amount - the credit-window cost guardrail. |
+
+Access the VM (IAP-only, no public 22):
+
+```bash
+gcloud compute ssh prom-intake-demo --zone europe-west1-b --tunnel-through-iap --project prom-intake-demo
+```
 
 ## Infrastructure as Code
 
-Terraform in `infra/gcp/` (planned, spec #55; [ADR-0012](../adr/0012-gcp-public-demo-deployment.md)):
-VM, static IP, firewall, deploy service account, Workload Identity Federation for GitHub Actions,
-GCS state bucket, billing alert. `infra/medplum/` remains the compose definition shared by local,
-CI, and the demo VM.
+All cloud resources above are Terraform in [`infra/gcp/`](../../infra/gcp/); the compose stack under
+`infra/medplum/` is unchanged and still defines the Medplum runtime the VM hosts. State lives in a
+versioned GCS bucket created by a one-time bootstrap module ([`infra/gcp/bootstrap/`](../../infra/gcp/bootstrap/)).
+
+```bash
+# One-time: create the remote-state bucket (its own state is local + gitignored).
+cd infra/gcp/bootstrap && terraform init && terraform apply
+
+# Provision / update the substrate (state in the bucket).
+cd infra/gcp && terraform init && terraform apply       # idempotent: a second apply plans zero changes
+
+terraform output          # static IP, the three sslip.io hosts, WIF provider name, deploy SA email
+
+# End of the credit window (T19): tear everything down except the state bucket.
+terraform destroy
+```
+
+The applying identity needs Owner (or equivalent) on `prom-intake-demo` and a budget role on the
+billing account; authenticate with `gcloud auth application-default login`. **No secrets are
+committed** - `*.tfvars` (except the committed `*.tfvars.example`), state, and the `.terraform/`
+plugin cache are gitignored, and the whole design carries zero cloud keys. CI runs
+`terraform fmt -check` + `terraform validate` on `infra/gcp/` (validate only, no credentials); see
+[`cicd.md`](cicd.md). Full runbook: [`infra/gcp/README.md`](../../infra/gcp/README.md).

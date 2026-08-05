@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars and adjust. terraform.tfvars is gitignored; this
+# example is committed and holds no credentials or keys - only non-secret config.
+# The defaults in variables.tf already match the demo, so overriding is optional.
+project_id        = "prom-intake-demo"
+region            = "europe-west1"
+# zone            = ""                  # empty -> derived as <region>-b
+machine_type      = "e2-medium"
+github_repo       = "OlegPavlyuk/prom-intake"
+billing_account   = "015795-E603BB-818DAD"
+budget_amount_usd = 50

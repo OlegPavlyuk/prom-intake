@@ -1,0 +1,3 @@
+# Copy to terraform.tfvars if you need to override the defaults. No secrets here.
+project_id = "prom-intake-demo"
+region     = "europe-west1"
