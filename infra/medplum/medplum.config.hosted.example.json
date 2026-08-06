@@ -1,0 +1,32 @@
+{
+  "_comment": "Hardened Medplum config VARIANT for the public GCP demo (ADR-0012, T16). This is a committed EXAMPLE with __PLACEHOLDER__ tokens: scripts/deploy-hosted.ts substitutes the reserved-IP sslip.io hosts (from terraform output) and generated super-admin credentials, then ships the result as medplum.config.json to the VM (the real file is gitignored - it holds a secret). Differences from the local infra/medplum/medplum.config.json: public HTTPS URLs on the api./app. origins; registerEnabled:false (no public sign-up); and a generated defaultSuperAdmin* so the default admin@example.com / medplum_admin pair never exists. Postgres/Redis keep the internal-network credentials (never publicly reachable; see docker-compose.hosted.yml).",
+  "port": 8103,
+  "baseUrl": "https://__API_HOST__/",
+  "issuer": "https://__API_HOST__/",
+  "jwksUrl": "https://__API_HOST__/.well-known/jwks.json",
+  "authorizeUrl": "https://__API_HOST__/oauth2/authorize",
+  "tokenUrl": "https://__API_HOST__/oauth2/token",
+  "userInfoUrl": "https://__API_HOST__/oauth2/userinfo",
+  "appBaseUrl": "https://__APP_HOST__/",
+  "allowedOrigins": "https://__APP_HOST__,https://__PATIENT_HOST__",
+  "binaryStorage": "file:./binary/",
+  "storageBaseUrl": "https://__API_HOST__/storage/",
+  "supportEmail": "support@example.com",
+  "database": {
+    "host": "postgres",
+    "port": 5432,
+    "dbname": "medplum",
+    "username": "medplum",
+    "password": "medplum"
+  },
+  "redis": {
+    "host": "redis",
+    "port": 6379,
+    "password": "medplum"
+  },
+  "logLevel": "info",
+  "registerEnabled": false,
+  "vmContextBotsEnabled": true,
+  "defaultSuperAdminEmail": "__SUPER_ADMIN_EMAIL__",
+  "defaultSuperAdminPassword": "__SUPER_ADMIN_PASSWORD__"
+}

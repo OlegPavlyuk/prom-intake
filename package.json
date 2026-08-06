@@ -30,6 +30,9 @@
     "medplum:dev-user": "tsx scripts/register-dev-user.ts",
     "medplum:seed": "tsx scripts/seed-instruments.ts",
     "medplum:deploy-bots": "tsx scripts/deploy-bots.ts",
+    "medplum:provision-hosted": "tsx scripts/provision-hosted.ts",
+    "deploy:hosted": "tsx scripts/deploy-hosted.ts",
+    "smoke:hosted": "tsx scripts/smoke-hosted.ts",
     "prepare": "husky"
   },
   "dependencies": {

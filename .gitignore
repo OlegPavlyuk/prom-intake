@@ -18,6 +18,12 @@ coverage/
 # Dev-only Medplum login credentials (npm run medplum:dev-user)
 .dev-user.json
 
+# Hosted deploy (scripts/deploy-hosted.ts): generated secrets + staging + tarballs.
+# The rendered medplum.config.json holds the super-admin password; never commit.
+infra/gcp/.deploy-secrets.json
+infra/gcp/.deploy/
+infra/gcp/*.tgz
+
 # Logs
 *.log
 npm-debug.log*

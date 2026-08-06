@@ -1,0 +1,46 @@
+# Caddy: the single public front door for the demo VM (ADR-0012, T16).
+#
+# Three origin-isolated sslip.io hosts preserve ADR-0010's credential isolation
+# in production shape. The hostnames encode the reserved static IP, so they are
+# not hard-coded here: the deploy script injects them as environment variables
+# (from `terraform -chdir=infra/gcp output`) and Caddy substitutes `{$VAR}` at
+# parse time. Caddy provisions Let's Encrypt certificates automatically for each
+# host over sslip.io wildcard DNS and redirects plain HTTP to HTTPS by default.
+#
+# Reach Medplum on the internal Docker network by service name (`medplum-server`
+# from infra/medplum/docker-compose.yml); it is never published to the internet
+# (the GCP firewall opens only 80/443).
+
+# Coordinator app (authenticated, ADR-0010). Static SPA bundle with history-mode
+# fallback so client-side routes resolve to index.html.
+{$CADDY_COORDINATOR_HOST} {
+	encode zstd gzip
+	root * /srv/coordinator
+	try_files {path} /index.html
+	file_server
+}
+
+# Patient completion page (account-less, credential-free, ADR-0010 A3). Its ONLY
+# server touchpoint is the Access-link `publicWebhook` Bot. Medplum sends no CORS
+# headers on /webhook (it is a server-to-server callback endpoint), so the page
+# calls it SAME-ORIGIN at /webhook/* and Caddy proxies that to Medplum - the one
+# hard topological constraint from ADR-0005 / infrastructure.md. Everything else
+# is the static bundle.
+{$CADDY_PATIENT_HOST} {
+	encode zstd gzip
+	handle /webhook/* {
+		reverse_proxy medplum-server:8103
+	}
+	handle {
+		root * /srv/patient
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# Medplum API. Pure reverse proxy; Medplum's own `baseUrl` in the hosted config
+# is this host, so it emits correct absolute URLs (OAuth issuer, storage, etc.).
+{$CADDY_API_HOST} {
+	encode zstd gzip
+	reverse_proxy medplum-server:8103
+}
