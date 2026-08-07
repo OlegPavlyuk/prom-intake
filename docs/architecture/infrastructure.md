@@ -238,7 +238,7 @@ drives the deploy unattended is [`cicd.md`](cicd.md#continuous-delivery--deploym
 | Custom VPC + subnet | Default-deny network; nothing is reachable except through the two firewall rules. |
 | Reserved static external IP | Stable IP the `sslip.io` hostnames encode - `app.<ip>.sslip.io` (coordinator), `forms.<ip>.sslip.io` (patient), `api.<ip>.sslip.io` (Medplum), preserving ADR-0010 origin isolation. |
 | Firewall | 80/443 open to the internet (Caddy front door); **SSH 22 only from the IAP range** `35.235.240.0/20` - there is no public SSH port. |
-| Deploy service account + Workload Identity Federation | GitHub Actions (`OlegPavlyuk/prom-intake`) impersonates the deploy SA via WIF to reach the VM over IAP. **No service-account key exists anywhere** (keyless CD, ADR-0012). Its rights are scoped to an IAP-tunnelled OS Login deploy. |
+| Deploy service account + Workload Identity Federation | GitHub Actions (`OlegPavlyuk/prom-intake`) impersonates the deploy SA via WIF to reach the VM over IAP. **No service-account key exists anywhere** (keyless CD, ADR-0012). Its rights are scoped to an IAP-tunnelled OS Login deploy: `compute.osAdminLogin`, `iap.tunnelResourceAccessor` on the one instance, and `iam.serviceAccountUser` on the **VM's own runtime SA** - `gcloud compute ssh` refuses an instance that runs as a service account without `actAs` on it (#66). |
 | Billing budget | Alerts on the demo project at 50/90/100% of the configured amount - the credit-window cost guardrail. |
 
 Access the VM (IAP-only, no public 22):
