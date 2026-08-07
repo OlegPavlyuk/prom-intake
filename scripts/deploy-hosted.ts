@@ -31,7 +31,7 @@ import { resetHostedDemo } from "./reset-hosted.js";
 import {
   applyHostsToEnv,
   applySecretsToEnv,
-  buildBundle,
+  buildDemoBundle,
   loadOrGenerateSecrets,
   REMOTE_DIR,
   REPO_ROOT,
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
     "[deploy] 1/5 Staging compose + Caddyfile + hardened config, building coordinator bundle..."
   );
   stageDeployDir(hosts, secrets);
-  buildBundle("coordinator", {
+  buildDemoBundle("coordinator", {
     VITE_MEDPLUM_BASE_URL: apiBase,
     VITE_PATIENT_APP_BASE_URL: `https://${hosts.patientHost}/`,
   });

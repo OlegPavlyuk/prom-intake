@@ -32,7 +32,7 @@ export const SYNTHETIC_PATIENTS: readonly SyntheticPatient[] = [
 ];
 
 /** How a synthetic patient reads in the UI, e.g. "Demo Patientone". */
-export function syntheticPatientLabel(patient: SyntheticPatient): string {
+function syntheticPatientLabel(patient: SyntheticPatient): string {
   return `${patient.given} ${patient.family}`;
 }
 
@@ -76,8 +76,13 @@ function matches(
   name: HumanName | undefined,
   synthetic: SyntheticPatient
 ): boolean {
+  // Case- and whitespace-insensitive, matching how the coordinator's own
+  // duplicate check compares names (FR-35): "already seeded" and "already
+  // exists, warn me" must not disagree about what the same name is, or a re-seed
+  // would mint a near-duplicate the baseline assertion then rejects.
+  const norm = (value: string): string => value.trim().toLowerCase();
   return (
-    (name?.given ?? []).join(" ") === synthetic.given &&
-    name?.family === synthetic.family
+    norm((name?.given ?? []).join(" ")) === norm(synthetic.given) &&
+    norm(name?.family ?? "") === norm(synthetic.family)
   );
 }

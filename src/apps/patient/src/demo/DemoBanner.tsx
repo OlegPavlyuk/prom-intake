@@ -21,7 +21,7 @@ const BANNER_COPY =
  * is banner-free by default. Read at render time (not at module load) so it stays
  * a plain build input and the UI tests can drive both states.
  */
-export function demoBannerEnabled(): boolean {
+function demoBannerEnabled(): boolean {
   return import.meta.env.VITE_DEMO_BANNER === "true";
 }
 

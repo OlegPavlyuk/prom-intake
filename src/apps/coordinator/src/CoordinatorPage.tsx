@@ -7,11 +7,7 @@ import {
   PatientTimelineScreen,
   type SelectedPatient,
 } from "./timeline/PatientTimelineScreen";
-import {
-  DemoBanner,
-  DEMO_BANNER_HEIGHT,
-  demoBannerEnabled,
-} from "./demo/DemoBanner";
+import { DemoBanner, demoBannerHeight } from "./demo/DemoBanner";
 
 /** Height of the header's toolbar row (title + sign out), banner excluded. */
 const TOOLBAR_HEIGHT = 56;
@@ -36,13 +32,13 @@ export function CoordinatorPage(): JSX.Element {
   // header is `position: fixed`, so anything in front of it in the document
   // would simply be covered. `AppShell` also derives the main region's top
   // padding from this height, so declaring the banner here keeps the whole
-  // layout consistent with no CSS overrides.
-  const headerHeight = demoBannerEnabled()
-    ? {
-        base: TOOLBAR_HEIGHT + DEMO_BANNER_HEIGHT.base,
-        sm: TOOLBAR_HEIGHT + DEMO_BANNER_HEIGHT.sm,
-      }
-    : TOOLBAR_HEIGHT;
+  // layout consistent with no CSS overrides. The height is zero on a non-demo
+  // build, which is how the header keeps its usual size.
+  const banner = demoBannerHeight();
+  const headerHeight = {
+    base: TOOLBAR_HEIGHT + banner.base,
+    sm: TOOLBAR_HEIGHT + banner.sm,
+  };
 
   return (
     <AppShell header={{ height: headerHeight }} padding="md">

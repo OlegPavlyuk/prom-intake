@@ -88,15 +88,31 @@ export function applyHostsToEnv(hosts: Hosts): void {
 // --- Secrets ----------------------------------------------------------------
 
 /**
- * Secrets precedence: a full env override (the pipeline's Actions secrets) wins;
- * otherwise a gitignored local file is generated once and reused, so the
- * super-admin password stays consistent with what the server seeded on first
- * boot (the `defaultSuperAdmin*` config only applies to an empty database).
+ * The demo coordinator login, in the repo on purpose (ADR-0012, T18). It is
+ * **published in the README** so the demo is self-serve, which makes it the one
+ * credential here that is not a secret - generating it would only guarantee the
+ * README and the live login drift apart. It buys a plain project member on a
+ * throwaway public demo and nothing else; the super admin, which can actually
+ * administer the server, is generated and never published.
+ */
+const PUBLISHED_COORDINATOR_LOGIN = {
+  coordinatorEmail: "coordinator@prom-intake.demo",
+  coordinatorPassword: "PromIntakeDemo2026!",
+} as const;
+
+/**
+ * Where each credential comes from: the **super admin** is a real secret, taken
+ * from the pipeline's Actions secrets or from a gitignored local file generated
+ * once and reused (so it stays consistent with what the server seeded on first
+ * boot - `defaultSuperAdmin*` only applies to an empty database). The
+ * **coordinator** is the published pair above, which the `DEMO_COORDINATOR_*`
+ * Actions secrets may still override for a rotation.
  */
 export function loadOrGenerateSecrets(): Secrets {
-  const fromEnv = envSecrets();
+  const coordinator = envCoordinatorLogin() ?? PUBLISHED_COORDINATOR_LOGIN;
+  const fromEnv = envSuperAdmin();
   if (fromEnv) {
-    return fromEnv;
+    return { ...fromEnv, ...coordinator };
   }
   // On a runner there is no local file to fall back to and generating one would
   // silently invent a super-admin password the server has never seen - the
@@ -104,40 +120,47 @@ export function loadOrGenerateSecrets(): Secrets {
   // later. Say what is actually missing instead.
   if (process.env.CI) {
     throw new Error(
-      "Missing Actions secrets: MEDPLUM_SUPER_ADMIN_EMAIL/PASSWORD and " +
-        "DEMO_COORDINATOR_EMAIL/PASSWORD must all be set (see docs/architecture/cicd.md)"
+      "Missing Actions secrets: MEDPLUM_SUPER_ADMIN_EMAIL and " +
+        "MEDPLUM_SUPER_ADMIN_PASSWORD must both be set (see docs/architecture/cicd.md)"
     );
   }
   if (existsSync(SECRETS_PATH)) {
-    return JSON.parse(readFileSync(SECRETS_PATH, "utf8")) as Secrets;
+    const stored = JSON.parse(readFileSync(SECRETS_PATH, "utf8")) as Secrets;
+    return { ...stored, ...coordinator };
   }
   const secrets: Secrets = {
     superAdminEmail: "superadmin@prom-intake.demo",
     superAdminPassword: strongSecret(),
-    coordinatorEmail: "coordinator@prom-intake.demo",
-    coordinatorPassword: strongSecret(),
+    ...coordinator,
   };
   writeFileSync(SECRETS_PATH, JSON.stringify(secrets, null, 2), {
     encoding: "utf8",
   });
   console.log(
-    `[hosted]     generated ${SECRETS_PATH} (gitignored - the source of truth for demo creds).`
+    `[hosted]     generated ${SECRETS_PATH} (gitignored - the source of truth for the super admin).`
   );
   return secrets;
 }
 
-function envSecrets(): Secrets | null {
-  const s = {
-    superAdminEmail: process.env.MEDPLUM_SUPER_ADMIN_EMAIL,
-    superAdminPassword: process.env.MEDPLUM_SUPER_ADMIN_PASSWORD,
-    coordinatorEmail: process.env.DEMO_COORDINATOR_EMAIL,
-    coordinatorPassword: process.env.DEMO_COORDINATOR_PASSWORD,
-  };
-  return s.superAdminEmail &&
-    s.superAdminPassword &&
-    s.coordinatorEmail &&
-    s.coordinatorPassword
-    ? (s as Secrets)
+function envSuperAdmin(): Pick<
+  Secrets,
+  "superAdminEmail" | "superAdminPassword"
+> | null {
+  const email = process.env.MEDPLUM_SUPER_ADMIN_EMAIL;
+  const password = process.env.MEDPLUM_SUPER_ADMIN_PASSWORD;
+  return email && password
+    ? { superAdminEmail: email, superAdminPassword: password }
+    : null;
+}
+
+function envCoordinatorLogin(): Pick<
+  Secrets,
+  "coordinatorEmail" | "coordinatorPassword"
+> | null {
+  const email = process.env.DEMO_COORDINATOR_EMAIL;
+  const password = process.env.DEMO_COORDINATOR_PASSWORD;
+  return email && password
+    ? { coordinatorEmail: email, coordinatorPassword: password }
     : null;
 }
 
@@ -158,20 +181,20 @@ function strongSecret(): string {
 // --- Bundles ----------------------------------------------------------------
 
 /**
- * Build one app's static bundle with hosted VITE_* values, then clean the env
- * file. Every bundle these scripts build is by definition a **public-demo**
- * bundle, so the demo banner flag is set here rather than at each call site -
- * there is no hosted build that should ship without the "synthetic data only"
- * notice (ADR-0012, T18). Local builds go through `npm run build:<app>` and are
+ * Build one app's static bundle for the public demo, then clean the env file.
+ * Every bundle these scripts build is by definition a demo bundle, so the banner
+ * flag is set here rather than at each call site - and set **last**, so no caller
+ * can turn off the "synthetic data only" notice a public deployment must carry
+ * (ADR-0012, T18). Local builds go through `npm run build:<app>` and are
  * untouched.
  */
-export function buildBundle(
+export function buildDemoBundle(
   app: "coordinator" | "patient",
   viteEnv: Record<string, string>
 ): void {
   const appDir = resolve(REPO_ROOT, "src/apps", app);
   const envFile = resolve(appDir, ".env.production.local");
-  const body = Object.entries({ VITE_DEMO_BANNER: "true", ...viteEnv })
+  const body = Object.entries({ ...viteEnv, VITE_DEMO_BANNER: "true" })
     .map(([k, v]) => `${k}=${v}`)
     .join("\n");
   writeFileSync(

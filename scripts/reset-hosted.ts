@@ -36,7 +36,7 @@ import {
 import {
   applyHostsToEnv,
   applySecretsToEnv,
-  buildBundle,
+  buildDemoBundle,
   loadOrGenerateSecrets,
   readWebhookPath,
   REPO_ROOT,
@@ -92,7 +92,7 @@ export async function resetHostedDemo(hosts: Hosts): Promise<ResetResult> {
   console.log(
     "[reset] 5/5 Rebuilding + shipping the patient bundle, then checking the baseline..."
   );
-  buildBundle("patient", {
+  buildDemoBundle("patient", {
     VITE_MEDPLUM_BASE_URL: apiBase,
     VITE_ACCESS_LINK_WEBHOOK_URL: webhookPath,
   });

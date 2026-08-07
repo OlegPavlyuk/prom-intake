@@ -83,16 +83,19 @@ four **Actions secrets**, all of them Medplum logins:
 
 | Secret | Used for |
 | ------ | -------- |
-| `MEDPLUM_SUPER_ADMIN_EMAIL` / `MEDPLUM_SUPER_ADMIN_PASSWORD` | Bootstrapping and expunging the demo project (registration is disabled on the hosted server) |
-| `DEMO_COORDINATOR_EMAIL` / `DEMO_COORDINATOR_PASSWORD` | The demo coordinator login the deploy invites - a **plain project member**, published in the README so the demo is self-serve |
+| `MEDPLUM_SUPER_ADMIN_EMAIL` / `MEDPLUM_SUPER_ADMIN_PASSWORD` | **Required.** Bootstrapping and expunging the demo project (registration is disabled on the hosted server) |
+| `DEMO_COORDINATOR_EMAIL` / `DEMO_COORDINATOR_PASSWORD` | **Optional override** of the published coordinator login (below), for rotating it without a code change |
 
-Actions masks them in logs, and the deploy script prints only the coordinator **email**, never a
-password. The two credential sets are deliberately different in kind: the super-admin pair is
-generated, strong, and secret (it can administer the server), while the coordinator pair is
-human-readable and public (it can only do a Care Coordinator's job). Changing
-`DEMO_COORDINATOR_PASSWORD` takes effect on the next deploy or `reset-demo` run, because the reset
-re-invites the coordinator from the secret - so the README and the live login are kept in step by
-re-running the pipeline, not by hand.
+The two credential sets are deliberately different in kind. The **super admin** can administer the
+server, so it is generated, strong, and secret; Actions masks it in logs and the deploy script prints
+only the coordinator **email**, never a password. The **demo coordinator** is a plain project member
+on a throwaway demo whose whole point is that strangers use it, so it is *published* - and therefore
+lives in the repo, as `PUBLISHED_COORDINATOR_LOGIN` in
+[`scripts/hosted-demo.ts`](../../scripts/hosted-demo.ts), the same value the README prints. Keeping
+it there rather than generating it is what stops the README and the live login from drifting apart.
+Setting the `DEMO_COORDINATOR_*` secrets overrides it; either way the change takes effect on the next
+deploy or `reset-demo` run, because the reset re-invites the coordinator - and the README must be
+updated to match by hand.
 
 ### Reset on every deploy
 

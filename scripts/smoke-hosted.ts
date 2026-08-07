@@ -179,28 +179,36 @@ async function assertServesBundle(
 
 /**
  * The banner is a build-flag feature, so "is this deployment labelled as a demo?"
- * is answerable without a browser: fetch the entry module the served HTML points
- * at and look for the copy. A bundle built without `VITE_DEMO_BANNER` folds the
- * flag to `false` and drops the string, so its absence means an unlabelled public
- * deployment - which is exactly the thing that must never ship (ADR-0012).
+ * is answerable without a browser: fetch the scripts the served HTML points at
+ * and look for the copy. A bundle built without `VITE_DEMO_BANNER` folds the flag
+ * to `false` and drops the string, so its absence means an unlabelled public
+ * deployment - exactly the thing that must never ship (ADR-0012).
+ *
+ * Every referenced chunk is searched, not just the entry one, so a future Vite
+ * code-split moves the string without failing an otherwise good deploy.
  */
 async function assertBundleIsLabelledDemo(
   host: string,
   html: string
 ): Promise<void> {
-  const src = /<script[^>]+src="([^"]+\.js)"/.exec(html)?.[1];
-  if (!src) {
-    throw new Error("served HTML references no module script to check");
+  const scripts = [...html.matchAll(/(?:src|href)="([^"]+\.js)"/g)].flatMap(
+    (m) => (m[1] ? [m[1]] : [])
+  );
+  if (scripts.length === 0) {
+    throw new Error("served HTML references no script to check");
   }
-  const res = await fetch(new URL(src, `https://${host}/`));
-  if (!res.ok) {
-    throw new Error(`GET https://${host}${src} -> HTTP ${res.status}`);
+  for (const src of scripts) {
+    const res = await fetch(new URL(src, `https://${host}/`));
+    if (!res.ok) {
+      throw new Error(`GET https://${host}${src} -> HTTP ${res.status}`);
+    }
+    if ((await res.text()).includes(DEMO_BANNER_MARKER)) {
+      return;
+    }
   }
-  if (!(await res.text()).includes(DEMO_BANNER_MARKER)) {
-    throw new Error(
-      `bundle ${src} carries no demo banner - it was built without VITE_DEMO_BANNER`
-    );
-  }
+  throw new Error(
+    `no bundle on ${host} carries the demo banner - it was built without VITE_DEMO_BANNER`
+  );
 }
 
 /** Log in with the client credentials in `.env` (client-credentials grant). */

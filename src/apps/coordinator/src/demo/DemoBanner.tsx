@@ -6,13 +6,8 @@ import { Box, Text } from "@mantine/core";
 // cannot live in `src/packages/**` (the backend stays DOM-free, ADR-0010 A4). The
 // copy is the contract; each app owns how it seats the strip in its own chrome.
 
-/**
- * Height the banner claims, per breakpoint. The sentence fits one line on a
- * normal screen and wraps to two on a phone, so the reserved height has to
- * follow - the coordinator shell hands these same values to `AppShell`, whose
- * fixed header the banner rides in.
- */
-export const DEMO_BANNER_HEIGHT = { base: 56, sm: 36 } as const;
+/** Height the banner claims when shown. Two lines on a phone, one from `sm` up. */
+const SHOWN_HEIGHT = { base: 56, sm: 36 } as const;
 
 /**
  * The notice itself, as one string literal rather than JSX text, so it survives
@@ -28,8 +23,19 @@ const BANNER_COPY =
  * is banner-free by default. Read at render time (not at module load) so it stays
  * a plain build input and the UI tests can drive both states.
  */
-export function demoBannerEnabled(): boolean {
+function demoBannerEnabled(): boolean {
   return import.meta.env.VITE_DEMO_BANNER === "true";
+}
+
+/**
+ * How much vertical space the banner takes, per breakpoint - zero when this is
+ * not a demo build. The coordinator shell adds it to `AppShell`'s header height,
+ * because the banner rides inside that fixed header; asking here rather than
+ * re-testing the flag there keeps "is there a banner, and how tall" one decision
+ * with one home.
+ */
+export function demoBannerHeight(): { base: number; sm: number } {
+  return demoBannerEnabled() ? SHOWN_HEIGHT : { base: 0, sm: 0 };
 }
 
 /**
@@ -45,7 +51,7 @@ export function DemoBanner(): JSX.Element | null {
 
   return (
     <Box
-      h={DEMO_BANNER_HEIGHT}
+      h={SHOWN_HEIGHT}
       px="md"
       bg="yellow.2"
       c="dark.8"
