@@ -3,7 +3,9 @@
 Infrastructure-as-code for the public portfolio demo defined in
 [ADR-0012](../../docs/adr/0012-gcp-public-demo-deployment.md) and spec #55. This module provisions
 the **substrate only** - the VM, network, identity, and cost guardrail. The application runtime
-(Caddy + compose stack) and the CD pipeline arrive in later tickets (T16/T17).
+(Caddy + compose stack) is [`docs/architecture/infrastructure.md`](../../docs/architecture/infrastructure.md#hosted-runtime);
+the CD pipeline that consumes the identity below is
+[`docs/architecture/cicd.md`](../../docs/architecture/cicd.md#continuous-delivery--deployment).
 
 Everything lives inside the pre-existing, manually-created project `prom-intake-demo`. Terraform
 never creates or bills the project - only resources inside it.
@@ -54,8 +56,31 @@ terraform output
 
 - `vm_static_ip` - reserved external IP.
 - `coordinator_host` / `patient_host` / `api_host` - the three `sslip.io` hostnames.
-- `wif_provider_name` - full WIF provider resource name (fed to `google-github-actions/auth` in T17).
+- `vm_name` / `vm_zone` - the deploy target's coordinates.
+- `wif_provider_name` - full WIF provider resource name (fed to `google-github-actions/auth`).
 - `deploy_service_account_email` - the SA that GitHub Actions impersonates.
+
+## Wiring the CD pipeline to this substrate
+
+Three **repository variables** (not secrets - none of these is sensitive) point the
+[deploy](../../.github/workflows/deploy.yml) and [reset](../../.github/workflows/reset-demo.yml)
+workflows at this substrate. Set them once, after the first apply:
+
+```bash
+gh variable set GCP_PROJECT_ID             --body prom-intake-demo   # = var.project_id
+gh variable set GCP_WIF_PROVIDER           --body "$(terraform -chdir=infra/gcp output -raw wif_provider_name)"
+gh variable set GCP_DEPLOY_SERVICE_ACCOUNT --body "$(terraform -chdir=infra/gcp output -raw deploy_service_account_email)"
+```
+
+Everything else the pipeline discovers at run time: the composite action
+[`.github/actions/hosted-demo-target`](../../.github/actions/hosted-demo-target/action.yml) reads the
+VM's reserved IP and derives the three `sslip.io` hosts from it, so no hostname is duplicated into
+GitHub configuration.
+
+**There is deliberately no cloud-credential secret.** The only Actions secrets are the four Medplum
+logins (`MEDPLUM_SUPER_ADMIN_*`, `DEMO_COORDINATOR_*`); see
+[`cicd.md`](../../docs/architecture/cicd.md#continuous-delivery--deployment). Creating a
+service-account key would violate [ADR-0012](../../docs/adr/0012-gcp-public-demo-deployment.md).
 
 ## Teardown
 

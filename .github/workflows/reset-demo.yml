@@ -1,0 +1,59 @@
+name: Reset demo
+
+# The on-demand recovery lever (ADR-0012, #59): wipe whatever visitors left
+# behind and put the demo back on its seeded baseline, without redeploying the
+# runtime. Manual only - there are deliberately NO scheduled triggers, and a
+# reset already happens automatically on every deploy.
+on:
+  workflow_dispatch:
+
+# Shares the deploy workflow's group so a reset can never interleave with a
+# deploy on the same VM.
+concurrency:
+  group: hosted-demo
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # Mint the OIDC token WIF exchanges. No cloud key is stored.
+
+jobs:
+  reset:
+    name: expunge -> re-seed -> smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - uses: ./.github/actions/hosted-demo-target
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      # `scripts/reset-hosted.ts` is the same payload the deploy runs as its
+      # second half: expunge the demo project, re-provision, seed PHQ-9, deploy
+      # the Bots, re-ship the patient bundle (its webhook path changes with the
+      # new project), assert the baseline, then smoke-check.
+      - name: Reset, re-seed and smoke-check the demo
+        env:
+          MEDPLUM_SUPER_ADMIN_EMAIL: ${{ secrets.MEDPLUM_SUPER_ADMIN_EMAIL }}
+          MEDPLUM_SUPER_ADMIN_PASSWORD: ${{ secrets.MEDPLUM_SUPER_ADMIN_PASSWORD }}
+          DEMO_COORDINATOR_EMAIL: ${{ secrets.DEMO_COORDINATOR_EMAIL }}
+          DEMO_COORDINATOR_PASSWORD: ${{ secrets.DEMO_COORDINATOR_PASSWORD }}
+        run: npm run reset:hosted
+
+      - name: Summarise
+        if: success()
+        run: |
+          {
+            echo "### Demo reset"
+            echo ""
+            echo "The demo project was expunged and re-seeded; https://${COORDINATOR_HOST}/ is back at its baseline."
+          } >>"$GITHUB_STEP_SUMMARY"

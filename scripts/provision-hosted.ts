@@ -36,23 +36,24 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { MedplumClient, MemoryStorage } from "@medplum/core";
+import { MedplumClient } from "@medplum/core";
 import type {
   ClientApplication,
   Project,
   ProjectMembership,
 } from "@medplum/fhirtypes";
+import { useNodeSessionStorage } from "./hosted-demo.js";
 
-// MedplumClient's password login uses a browser PKCE/`sessionStorage`. Back it
-// with in-memory storage so the flow works in Node (mirrors the sibling scripts).
-const globalWithStorage = globalThis as typeof globalThis & {
-  sessionStorage?: Storage;
-};
-globalWithStorage.sessionStorage ??= new MemoryStorage() as unknown as Storage;
+useNodeSessionStorage();
 
 const ENV_PATH = resolve(process.cwd(), ".env");
 const DEV_USER_PATH = resolve(process.cwd(), ".dev-user.json");
 const DEFAULT_PROJECT_NAME = "PROM Intake Demo";
+
+/** The demo project's exact name - the handle both provisioning and reset use. */
+export function demoProjectName(): string {
+  return process.env.PROJECT_NAME ?? DEFAULT_PROJECT_NAME;
+}
 
 /** The credentials + URLs the hosted run needs, returned to the orchestrator. */
 export interface HostedEnv {
@@ -125,7 +126,7 @@ async function reuseIfLive(baseUrl: string): Promise<DevUserFile | null> {
 
 /** Super-admin path: create/find the project, invite the coordinator, mint a client. */
 async function provisionFresh(baseUrl: string): Promise<DevUserFile> {
-  const projectName = process.env.PROJECT_NAME ?? DEFAULT_PROJECT_NAME;
+  const projectName = demoProjectName();
   const email = requireEnv("DEMO_COORDINATOR_EMAIL");
   const password = requireEnv("DEMO_COORDINATOR_PASSWORD");
 
@@ -205,7 +206,12 @@ async function ensureProject(
   return created;
 }
 
-async function superAdminLogin(baseUrl: string): Promise<MedplumClient> {
+/**
+ * Log in as the generated super admin (`defaultSuperAdmin*` in the hosted
+ * config). Exported because the reset path (`reset-hosted.ts`) needs the same
+ * identity to expunge the demo project.
+ */
+export async function superAdminLogin(baseUrl: string): Promise<MedplumClient> {
   const admin = new MedplumClient({ baseUrl });
   const login = await admin.startLogin({
     email: requireEnv("MEDPLUM_SUPER_ADMIN_EMAIL"),

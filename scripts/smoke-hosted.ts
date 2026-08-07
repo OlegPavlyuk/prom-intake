@@ -22,26 +22,21 @@
  * Usage:
  *   npm run smoke:hosted
  */
-import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { MedplumClient, MemoryStorage } from "@medplum/core";
+import { MedplumClient } from "@medplum/core";
 import { PHQ9 } from "../src/packages/instrument/phq9.js";
+import {
+  requireEnv,
+  resolveHosts,
+  useNodeSessionStorage,
+} from "./hosted-demo.js";
 
-const globalWithStorage = globalThis as typeof globalThis & {
-  sessionStorage?: Storage;
-};
-globalWithStorage.sessionStorage ??= new MemoryStorage() as unknown as Storage;
+useNodeSessionStorage();
 
 const BOT_IDENTIFIER = "https://prom-intake.example/bot|access-link-submit";
 const COORDINATOR_TITLE = "PROM Intake - Coordinator";
 const PATIENT_TITLE = "PROM Intake - Complete your questionnaire";
-
-interface Hosts {
-  readonly apiHost: string;
-  readonly coordinatorHost: string;
-  readonly patientHost: string;
-}
 
 async function main(): Promise<void> {
   const envPath = resolve(process.cwd(), ".env");
@@ -191,45 +186,6 @@ async function discoverWebhookPath(medplum: MedplumClient): Promise<string> {
     throw new Error("Access-link Bot has no ProjectMembership");
   }
   return `/webhook/${membership.id}`;
-}
-
-/** Hosts from env, else from `terraform -chdir=infra/gcp output`. */
-function resolveHosts(): Hosts {
-  const fromEnv = {
-    apiHost: process.env.API_HOST,
-    coordinatorHost: process.env.COORDINATOR_HOST,
-    patientHost: process.env.PATIENT_HOST,
-  };
-  if (fromEnv.apiHost && fromEnv.coordinatorHost && fromEnv.patientHost) {
-    return fromEnv as Hosts;
-  }
-  const raw = execFileSync(
-    "terraform",
-    ["-chdir=infra/gcp", "output", "-json"],
-    { encoding: "utf8" }
-  );
-  const out = JSON.parse(raw) as Record<string, { value: string } | undefined>;
-  const hosts = {
-    apiHost: out.api_host?.value,
-    coordinatorHost: out.coordinator_host?.value,
-    patientHost: out.patient_host?.value,
-  };
-  if (!hosts.apiHost || !hosts.coordinatorHost || !hosts.patientHost) {
-    throw new Error(
-      "set API_HOST/COORDINATOR_HOST/PATIENT_HOST or apply the terraform substrate"
-    );
-  }
-  return hosts as Hosts;
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(
-      `Missing required env var ${name} (run provisioning first)`
-    );
-  }
-  return value;
 }
 
 main().catch((err) => {

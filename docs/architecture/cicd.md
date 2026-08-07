@@ -41,14 +41,67 @@ integration tests run in CI.
 
 ## Continuous Delivery / Deployment
 
-Settled in [ADR-0012](../adr/0012-gcp-public-demo-deployment.md) (planned, spec #55): a GitHub
-Actions deploy workflow, authenticated to GCP via **Workload Identity Federation** (keyless - no
-cloud credential stored), runs on every push to `main` after CI is green and on manual dispatch.
-It builds both SPA bundles, ships them + the Caddy/compose config to the demo VM, redeploys the
-Bots, and **resets + re-seeds the demo project on every deployment**; a second `workflow_dispatch`
-workflow resets the demo on demand. Each deploy ends with an HTTPS smoke step (Medplum health,
-both apps served, seeded PHQ-9 queryable, `/webhook` round-trip) that fails the deploy loudly.
-This section is updated with the concrete workflow files as the spec's tickets land.
+**Status:** Accepted (v1) - established in T17 (issue #59), per
+[ADR-0012](../adr/0012-gcp-public-demo-deployment.md). Two workflows deliver the public GCP demo:
+
+| Workflow | Trigger | What it runs |
+| -------- | ------- | ------------ |
+| [`deploy.yml`](../../.github/workflows/deploy.yml) | `workflow_run` on a **successful CI run for `main`**, plus `workflow_dispatch` | `npm run deploy:hosted` - build both bundles, ship them + compose/Caddy/Medplum config to the VM over IAP, bring the stack up, **reset + re-seed** the demo project, deploy the Bots, then the smoke gate |
+| [`reset-demo.yml`](../../.github/workflows/reset-demo.yml) | `workflow_dispatch` **only** | `npm run reset:hosted` - the reset + re-seed half alone, the on-demand recovery lever |
+
+Both workflows are thin: the payload is the same script a developer runs by hand
+([`infrastructure.md`](infrastructure.md#deploy-reset--smoke-scripts)), so an automated deploy and a
+manual one cannot drift apart.
+
+### Deploying only after CI is green
+
+`deploy.yml` listens for `workflow_run` on the **CI** workflow rather than for `push`, and its job
+carries `if: github.event.workflow_run.conclusion == 'success'` - a red CI produces a `workflow_run`
+event that the job then refuses. Because a `workflow_run` job checks out the default branch by
+default, the checkout is pinned to `github.event.workflow_run.head_sha`: the deployed commit is
+exactly the commit CI passed. Both workflows share the `hosted-demo` **concurrency group** with
+`cancel-in-progress: false`, so two runs can never mutate the VM at once and a run in flight is
+never killed part-way through.
+
+### Keyless cloud auth (no stored credential)
+
+The shared composite action
+[`.github/actions/hosted-demo-target`](../../.github/actions/hosted-demo-target/action.yml) is the
+only place either workflow touches GCP identity. It exchanges the run's **GitHub OIDC token** for a
+short-lived access token through Workload Identity Federation (`google-github-actions/auth`,
+`permissions: id-token: write`) against the provider and service account Terraform created
+([`infra/gcp/iam.tf`](../../infra/gcp/iam.tf)) - whose `attribute_condition` admits only this repo on
+`refs/heads/main`. **No service-account key exists anywhere**, extending ADR-0008's "CI stores no
+secrets" stance to the cloud. The action then resolves the demo's three `sslip.io` hosts from the
+VM's reserved IP and exports them to the job environment, so no hostname is duplicated into GitHub
+configuration.
+
+Configuration is three non-sensitive **repository variables** - `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`,
+`GCP_DEPLOY_SERVICE_ACCOUNT` (set from `terraform output`; see
+[`infra/gcp/README.md`](../../infra/gcp/README.md#wiring-the-cd-pipeline-to-this-substrate)) - and
+four **Actions secrets**, all of them Medplum logins:
+
+| Secret | Used for |
+| ------ | -------- |
+| `MEDPLUM_SUPER_ADMIN_EMAIL` / `MEDPLUM_SUPER_ADMIN_PASSWORD` | Bootstrapping and expunging the demo project (registration is disabled on the hosted server) |
+| `DEMO_COORDINATOR_EMAIL` / `DEMO_COORDINATOR_PASSWORD` | The published demo coordinator login the deploy invites |
+
+Actions masks them in logs, and the deploy script prints only the coordinator **email**, never a
+password.
+
+### Reset on every deploy
+
+Demo data is ephemeral by design (ADR-0012): each deploy expunges the whole demo `Project`
+compartment as super admin and rebuilds it, so every release starts from the same seeded baseline.
+The reset asserts that itself - it fails if the fresh project holds any `Patient`,
+`QuestionnaireResponse`, or `Task` - and the deploy then runs the smoke gate. There are **no
+scheduled jobs**; the only unattended trigger in the repo is "CI went green on `main`".
+
+### The smoke gate
+
+Every run ends with `npm run smoke:hosted` over public HTTPS (Medplum health, both bundles served,
+seeded PHQ-9 queryable, `/webhook` round-trip). It exits non-zero on the first failure, which fails
+the step and the run - a deploy that does not serve a working demo cannot report success.
 
 ## Branch protection
 

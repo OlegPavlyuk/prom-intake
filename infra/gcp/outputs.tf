@@ -20,6 +20,16 @@ output "api_host" {
   value       = "api.${google_compute_address.static.address}.sslip.io"
 }
 
+output "vm_name" {
+  description = "Demo VM instance name (deploy target)."
+  value       = google_compute_instance.vm.name
+}
+
+output "vm_zone" {
+  description = "Zone the demo VM runs in."
+  value       = google_compute_instance.vm.zone
+}
+
 # Consumed by the CD pipeline (T17) to configure keyless auth.
 output "wif_provider_name" {
   description = "Full resource name of the WIF provider (google-github-actions/auth workload_identity_provider)."
