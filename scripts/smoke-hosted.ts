@@ -24,14 +24,15 @@
  */
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { MedplumClient, MemoryStorage } from "@medplum/core";
+import { MedplumClient } from "@medplum/core";
 import { PHQ9 } from "../src/packages/instrument/phq9.js";
-import { resolveHosts } from "./hosted-runtime.js";
+import {
+  requireEnv,
+  resolveHosts,
+  useNodeSessionStorage,
+} from "./hosted-demo.js";
 
-const globalWithStorage = globalThis as typeof globalThis & {
-  sessionStorage?: Storage;
-};
-globalWithStorage.sessionStorage ??= new MemoryStorage() as unknown as Storage;
+useNodeSessionStorage();
 
 const BOT_IDENTIFIER = "https://prom-intake.example/bot|access-link-submit";
 const COORDINATOR_TITLE = "PROM Intake - Coordinator";
@@ -185,16 +186,6 @@ async function discoverWebhookPath(medplum: MedplumClient): Promise<string> {
     throw new Error("Access-link Bot has no ProjectMembership");
   }
   return `/webhook/${membership.id}`;
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(
-      `Missing required env var ${name} (run provisioning first)`
-    );
-  }
-  return value;
 }
 
 main().catch((err) => {

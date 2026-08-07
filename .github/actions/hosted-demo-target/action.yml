@@ -2,7 +2,7 @@ name: Hosted demo target
 description: >
   Authenticate to GCP keylessly via Workload Identity Federation and put the
   demo VM's coordinates + the three sslip.io hosts into the job environment,
-  where scripts/hosted-runtime.ts picks them up.
+  where scripts/hosted-demo.ts picks them up.
 
 inputs:
   workload_identity_provider:
@@ -14,6 +14,10 @@ inputs:
   project_id:
     description: GCP project that hosts the demo.
     required: true
+  # These two default to the substrate's own literals (infra/gcp/compute.tf pins
+  # the instance name; the zone derives from var.region). They are inputs rather
+  # than hard-coded so a second environment can pass its own, and `terraform
+  # output vm_name` / `vm_zone` print the values to check them against.
   vm_name:
     description: Demo VM instance name (terraform output vm_name).
     required: false

@@ -36,19 +36,15 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { MedplumClient, MemoryStorage } from "@medplum/core";
+import { MedplumClient } from "@medplum/core";
 import type {
   ClientApplication,
   Project,
   ProjectMembership,
 } from "@medplum/fhirtypes";
+import { useNodeSessionStorage } from "./hosted-demo.js";
 
-// MedplumClient's password login uses a browser PKCE/`sessionStorage`. Back it
-// with in-memory storage so the flow works in Node (mirrors the sibling scripts).
-const globalWithStorage = globalThis as typeof globalThis & {
-  sessionStorage?: Storage;
-};
-globalWithStorage.sessionStorage ??= new MemoryStorage() as unknown as Storage;
+useNodeSessionStorage();
 
 const ENV_PATH = resolve(process.cwd(), ".env");
 const DEV_USER_PATH = resolve(process.cwd(), ".dev-user.json");

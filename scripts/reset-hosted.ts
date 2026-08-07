@@ -18,14 +18,14 @@
  * and re-ships it. The coordinator bundle is host-only and is left alone.
  *
  * Required env (Actions secrets in CI, the gitignored secrets file locally -
- * see `hosted-runtime.ts`): the super-admin and demo-coordinator credentials,
+ * see `hosted-demo.ts`): the super-admin and demo-coordinator credentials,
  * plus the three hosts or a usable `terraform output`.
  *
  * Usage:
  *   npm run reset:hosted
  */
 import { resolve } from "node:path";
-import { MedplumClient, MemoryStorage } from "@medplum/core";
+import { MedplumClient } from "@medplum/core";
 import type { Project } from "@medplum/fhirtypes";
 import {
   demoProjectName,
@@ -34,25 +34,22 @@ import {
   type HostedEnv,
 } from "./provision-hosted.js";
 import {
+  applyHostsToEnv,
+  applySecretsToEnv,
   buildBundle,
-  exportHosts,
-  exportSecrets,
   loadOrGenerateSecrets,
   readWebhookPath,
   REPO_ROOT,
+  requireEnv,
   resolveHosts,
   run,
   shipBundle,
   sleep,
+  useNodeSessionStorage,
   type Hosts,
-} from "./hosted-runtime.js";
+} from "./hosted-demo.js";
 
-// MedplumClient's password login uses a browser PKCE/`sessionStorage`. Back it
-// with in-memory storage so the flow works in Node (mirrors the sibling scripts).
-const globalWithStorage = globalThis as typeof globalThis & {
-  sessionStorage?: Storage;
-};
-globalWithStorage.sessionStorage ??= new MemoryStorage() as unknown as Storage;
+useNodeSessionStorage();
 
 /** How long to wait for the expunge to take effect (it may run asynchronously). */
 const EXPUNGE_TIMEOUT_MS = 120_000;
@@ -111,9 +108,7 @@ async function expungeDemoProject(apiBase: string): Promise<void> {
   const name = demoProjectName();
   const admin = await superAdminLogin(apiBase);
 
-  const doomed = (await admin.searchResources("Project", { name })).filter(
-    (p) => p.name === name
-  );
+  const doomed = await projectsNamed(admin, name);
   if (doomed.length === 0) {
     console.log(`[reset]     no project named "${name}" - nothing to expunge.`);
     return;
@@ -137,6 +132,15 @@ async function expungeDemoProject(apiBase: string): Promise<void> {
   await waitForGone(admin, name, lastError);
 }
 
+/** Project search by `name` is a contains-match, so filter to exact hits. */
+async function projectsNamed(
+  admin: MedplumClient,
+  name: string
+): Promise<Project[]> {
+  const candidates = await admin.searchResources("Project", { name });
+  return candidates.filter((p) => p.name === name);
+}
+
 /** Poll until no project with this exact name remains. */
 async function waitForGone(
   admin: MedplumClient,
@@ -145,10 +149,7 @@ async function waitForGone(
 ): Promise<void> {
   const deadline = Date.now() + EXPUNGE_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const remaining = (await admin.searchResources("Project", { name })).filter(
-      (p: Project) => p.name === name
-    );
-    if (remaining.length === 0) {
+    if ((await projectsNamed(admin, name)).length === 0) {
       return;
     }
     await sleep(2_000);
@@ -180,9 +181,9 @@ async function assertSeededBaseline(apiBase: string): Promise<void> {
   if (questionnaires === 0) {
     throw new Error("reset left no seeded Questionnaire in the demo project");
   }
-  // Everything a visitor can create lives in these three types (CONTEXT.md:
-  // Assignment and Flag are both Tasks). A non-zero count means the expunge
-  // missed data and the release would not start deterministic.
+  // Everything a visitor can create lives in these three types - an Assignment
+  // and a Flag are both `Task`s (ADR-0001, ADR-0002). A non-zero count means the
+  // expunge missed data and the release would not start deterministic.
   for (const type of ["Patient", "QuestionnaireResponse", "Task"] as const) {
     const remaining = await countOf(medplum, type);
     if (remaining !== 0) {
@@ -207,19 +208,11 @@ async function countOf(
   return bundle.total;
 }
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required env var ${name}`);
-  }
-  return value;
-}
-
 // Standalone entry point: the `reset-demo` workflow's whole payload.
 if (import.meta.url === `file://${process.argv[1]}`) {
   const hosts = resolveHosts();
-  exportHosts(hosts);
-  exportSecrets(loadOrGenerateSecrets(), `https://${hosts.apiHost}/`);
+  applyHostsToEnv(hosts);
+  applySecretsToEnv(loadOrGenerateSecrets(), `https://${hosts.apiHost}/`);
 
   resetHostedDemo(hosts)
     .then(async ({ webhookPath }) => {

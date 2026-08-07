@@ -311,7 +311,7 @@ server re-provisions.
 ### Deploy, reset + smoke scripts
 
 Three scripts share one vocabulary
-([`scripts/hosted-runtime.ts`](../../scripts/hosted-runtime.ts): the hosts, the secrets, bundle
+([`scripts/hosted-demo.ts`](../../scripts/hosted-demo.ts): the hosts, the secrets, bundle
 builds, and the IAP file-shipping helpers). Everything in it is **env-first** - the pipeline supplies
 hosts and secrets from repo variables/secrets, a developer's machine falls back to
 `terraform -chdir=infra/gcp output` and the gitignored `infra/gcp/.deploy-secrets.json` (generated

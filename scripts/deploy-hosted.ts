@@ -29,9 +29,9 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { resetHostedDemo } from "./reset-hosted.js";
 import {
+  applyHostsToEnv,
+  applySecretsToEnv,
   buildBundle,
-  exportHosts,
-  exportSecrets,
   loadOrGenerateSecrets,
   REMOTE_DIR,
   REPO_ROOT,
@@ -44,7 +44,7 @@ import {
   tarCreate,
   type Hosts,
   type Secrets,
-} from "./hosted-runtime.js";
+} from "./hosted-demo.js";
 
 const STAGING_DIR = resolve(REPO_ROOT, "infra/gcp/.deploy");
 const CONFIG_EXAMPLE = resolve(
@@ -66,8 +66,8 @@ async function main(): Promise<void> {
   );
 
   const secrets = loadOrGenerateSecrets();
-  exportHosts(hosts);
-  exportSecrets(secrets, apiBase);
+  applyHostsToEnv(hosts);
+  applySecretsToEnv(secrets, apiBase);
 
   console.log(
     "[deploy] 1/5 Staging compose + Caddyfile + hardened config, building coordinator bundle..."
@@ -104,10 +104,13 @@ async function main(): Promise<void> {
   console.log(`  Patient:     https://${hosts.patientHost}/`);
   console.log(`  Medplum API: https://${hosts.apiHost}/`);
   // Never print the password - this script also runs in GitHub Actions, where
-  // stdout is captured. It lives in the gitignored secrets file (local) or the
-  // DEMO_COORDINATOR_PASSWORD secret (CI); T18 publishes the login.
+  // stdout is captured. Point at wherever the password actually is for this run;
+  // on a runner there is no local secrets file. T18 publishes the login.
+  const passwordLocation = process.env.CI
+    ? "the DEMO_COORDINATOR_PASSWORD Actions secret"
+    : "infra/gcp/.deploy-secrets.json";
   console.log(
-    `  Coordinator login: ${env.email} (password in infra/gcp/.deploy-secrets.json)`
+    `  Coordinator login: ${env.email} (password in ${passwordLocation})`
   );
 }
 

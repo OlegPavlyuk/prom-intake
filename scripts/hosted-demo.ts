@@ -1,10 +1,10 @@
 /**
- * Shared vocabulary for the hosted GCP demo (ADR-0012): where the demo lives,
- * which credentials open it, how a bundle is built, and how bytes reach the VM.
+ * How to reach and drive the hosted GCP demo (ADR-0012): where it lives, which
+ * credentials open it, how a bundle is built, and how bytes get onto the VM.
  *
  * `deploy-hosted.ts` (full deploy), `reset-hosted.ts` (reset + re-seed) and
- * `smoke-hosted.ts` (the gate) all speak it, so the T17 pipeline orchestrates
- * one implementation instead of three.
+ * `smoke-hosted.ts` (the gate) all speak this vocabulary, so the CD pipeline
+ * orchestrates one implementation instead of three.
  *
  * Everything here is **env-first**: GitHub Actions supplies hosts and secrets
  * from repo variables/secrets, while a developer's machine falls back to
@@ -14,20 +14,18 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
+import { MemoryStorage } from "@medplum/core";
 
-/** The demo VM, as `gcloud` addresses it. Overridable for a second environment. */
-export const VM_NAME = process.env.VM_NAME ?? "prom-intake-demo";
-export const VM_ZONE = process.env.VM_ZONE ?? "europe-west1-b";
-export const GCP_PROJECT = process.env.GCP_PROJECT ?? "prom-intake-demo";
+/** The demo VM, as `gcloud` addresses it (the T15 substrate's facts). */
+const VM_NAME = process.env.VM_NAME ?? "prom-intake-demo";
+const VM_ZONE = process.env.VM_ZONE ?? "europe-west1-b";
+const GCP_PROJECT = process.env.GCP_PROJECT ?? "prom-intake-demo";
 
 /** The deploy dir under the OS Login user's home on the VM. */
 export const REMOTE_DIR = "prom-intake";
 
 export const REPO_ROOT = process.cwd();
-export const SECRETS_PATH = resolve(
-  REPO_ROOT,
-  "infra/gcp/.deploy-secrets.json"
-);
+const SECRETS_PATH = resolve(REPO_ROOT, "infra/gcp/.deploy-secrets.json");
 
 /** The three origin-isolated hosts (ADR-0010) the demo is served on. */
 export interface Hosts {
@@ -81,7 +79,7 @@ export function resolveHosts(): Hosts {
 }
 
 /** Publish the resolved hosts to the environment child scripts inherit. */
-export function exportHosts(hosts: Hosts): void {
+export function applyHostsToEnv(hosts: Hosts): void {
   process.env.API_HOST = hosts.apiHost;
   process.env.COORDINATOR_HOST = hosts.coordinatorHost;
   process.env.PATIENT_HOST = hosts.patientHost;
@@ -144,7 +142,7 @@ function envSecrets(): Secrets | null {
 }
 
 /** Publish the secrets to the environment provisioning + bots inherit. */
-export function exportSecrets(secrets: Secrets, apiBase: string): void {
+export function applySecretsToEnv(secrets: Secrets, apiBase: string): void {
   process.env.MEDPLUM_BASE_URL = apiBase;
   process.env.MEDPLUM_SUPER_ADMIN_EMAIL = secrets.superAdminEmail;
   process.env.MEDPLUM_SUPER_ADMIN_PASSWORD = secrets.superAdminPassword;
@@ -276,6 +274,27 @@ export function readEnvValue(path: string, key: string): string | null {
     }
   }
   return null;
+}
+
+export function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required env var ${name}`);
+  }
+  return value;
+}
+
+/**
+ * `MedplumClient`'s password login uses a browser PKCE flow backed by
+ * `sessionStorage`. Back it with in-memory storage so the flow works in Node.
+ * Call once, before any client login.
+ */
+export function useNodeSessionStorage(): void {
+  const globalWithStorage = globalThis as typeof globalThis & {
+    sessionStorage?: Storage;
+  };
+  globalWithStorage.sessionStorage ??=
+    new MemoryStorage() as unknown as Storage;
 }
 
 export function sleep(ms: number): Promise<void> {
