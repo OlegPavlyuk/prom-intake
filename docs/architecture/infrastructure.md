@@ -51,9 +51,24 @@ reuses the project when the existing `.env` credentials still authenticate again
 and re-provisions cleanly after `docker compose down -v` (pass `--fresh` to force a new one).
 
 `npm run dev:full` (`scripts/dev-full.ts`) is the single documented entry point. It brings up the
-Docker Medplum stack, runs `provision-local`, seeds the PHQ-9, deploys both Bots + the Subscription
+Docker Medplum stack, runs `provision-local`, seeds the baseline, deploys both Bots + the Subscription
 (reusing the idempotent `medplum:seed` / `medplum:deploy-bots` scripts), then runs both dev servers
 concurrently and prints the coordinator login + URLs. See the README's **Run the whole app locally**.
+
+### The seeded baseline (`npm run medplum:seed`)
+
+[`scripts/seed-baseline.ts`](../../scripts/seed-baseline.ts) is the **one seed path**, run by both
+`dev:full` and the hosted reset, so local and demo environments start identical. It seeds, all
+idempotently (upsert keyed on canonical url / instrument key / exact patient name):
+
+| What | Why |
+| ---- | --- |
+| Project CodeSystems + the PHQ-9 `Questionnaire` | The reference data every flow reads |
+| The **synthetic patients** ([`scripts/synthetic-patients.ts`](../../scripts/synthetic-patients.ts)) | So a visitor can assign immediately without inventing a patient. Obviously-fake names (`Demo Patientone`, ...) - the same promise the demo banner makes in the UI (ADR-0012, T18) |
+
+The synthetic-patient roster is also the demo's **reset baseline**: `reset-hosted.ts` asserts the
+rebuilt project holds exactly those Patients and nothing else (see
+[Deploy, reset + smoke scripts](#deploy-reset--smoke-scripts)).
 
 ### Hosted Medplum (alternative)
 
@@ -126,8 +141,19 @@ npm run preview:patient       # serve the built bundle
   `http://localhost:8103/`) and `VITE_PATIENT_APP_BASE_URL` (the Patient completion page base used to
   assemble the patient-facing Access-link URL from an issued token - the Coordinator app is the
   delivery layer, ADR-0010; default `http://localhost:3001/`). Both are documented in
-  [`src/apps/coordinator/.env.example`](../../src/apps/coordinator/.env.example). Concrete
-  hosting/deploy targets for the two static bundles are _TBD_ (see below).
+  [`src/apps/coordinator/.env.example`](../../src/apps/coordinator/.env.example). The bundles are
+  served by the [hosted runtime](#hosted-runtime) below.
+
+- **Demo banner (`VITE_DEMO_BANNER`).** A third non-secret flag, read by **both** apps: set to
+  `"true"` it renders a persistent, non-dismissable "Public demo - synthetic data only. Do not enter
+  real health information." strip on every screen (ADR-0012). It is presentation only - it creates no
+  resource and changes no flow, and it is deliberately **not** coupled to the Crisis Response (FR-15),
+  which is a separate mechanism with a separate job. The hosted deploy sets the flag for every bundle
+  it builds ([`scripts/hosted-demo.ts`](../../scripts/hosted-demo.ts)'s `buildBundle`, so no hosted
+  build can ship without it); local dev leaves it unset, so `dev:full` is banner-free. The component
+  is duplicated per app rather than shared: the two bundles are credential-isolated (ADR-0010 A2) and
+  React cannot live in `src/packages/**` (ADR-0010 A4). Covered by `ui`-project tests in each app
+  (banner present with the flag on, absent with it off).
 
 ## Medplum Bots
 
@@ -300,8 +326,11 @@ admin on an empty database).
 Because `registerEnabled: false` rejects the open-registration flow `provision-local` uses, the
 hosted project is bootstrapped through the generated **super admin** instead
 ([`scripts/provision-hosted.ts`](../../scripts/provision-hosted.ts)): super-admin login ->
-find-or-create the demo `Project` -> invite the demo coordinator as a project admin with a known
-password (`sendEmail: false`, headless; `upsert: true`, idempotent) -> mint a `ClientApplication`.
+find-or-create the demo `Project` -> invite the demo coordinator as a **plain project member** with a
+known password (`sendEmail: false`, headless; `upsert: true`, idempotent) -> mint a
+`ClientApplication`. The coordinator is deliberately *not* a project admin: that login is published
+in the README, so it gets coordinator-level access only and project administration stays with the
+super admin, whose credentials are generated and never published.
 It writes the same `.env` (client credentials) + `.dev-user.json` (coordinator login) the local flow
 produces, so [`medplum:seed`](#local-medplum-test-project) and
 [`medplum:deploy-bots`](#medplum-bots) then run **unchanged** (Bots stay `vmcontext`, ADR-0012). It
@@ -338,9 +367,10 @@ provisioning rebuilds it - fresh project, coordinator invite, client credentials
 `medplum:seed` and `medplum:deploy-bots`. Because the project is recreated, the Access-link Bot gets
 a **new `ProjectMembership`**, so the `/webhook/<membership-id>` path changes; the patient bundle
 embeds that path at build time, so the reset rebuilds and re-ships it (the coordinator bundle is
-host-only and untouched). It ends by asserting the baseline - the seeded `Questionnaire` is present
-and there are zero `Patient`, `QuestionnaireResponse` and `Task` resources - so a missed expunge
-fails the run instead of shipping a non-deterministic demo.
+host-only and untouched). It ends by asserting the baseline - the seeded `Questionnaire` is present,
+the `Patient` count is exactly the [synthetic roster](#the-seeded-baseline-npm-run-medplumseed), and
+there are zero `QuestionnaireResponse` and `Task` resources - so both a half-run seed and a missed
+expunge fail the run instead of shipping a non-deterministic demo.
 
 `npm run smoke:hosted` ([`scripts/smoke-hosted.ts`](../../scripts/smoke-hosted.ts)) is the
 deployment's behavioural seam - the gate at the end of both the deploy and the reset. Lightweight,

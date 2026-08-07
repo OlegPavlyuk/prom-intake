@@ -50,6 +50,48 @@ PROM Intake is a portfolio project, and says so openly
 ([`docs/project/portfolio-goals.md`](docs/project/portfolio-goals.md)) - but it is designed,
 documented, and reviewed as if for a real care organization, because doing so is the demonstration.
 
+## Live demo
+
+> **Public demo - synthetic data only. Do not enter real health information.**
+> Every screen carries that banner, and every patient in it is fictional. The environment is open to
+> anyone with this link: treat anything you type as public.
+
+**Coordinator app: <https://app.34.22.165.117.sslip.io/>**
+
+| | |
+| --- | --- |
+| Sign in with | `coordinator@prom-intake.demo` / `PromIntakeDemo2026!` |
+| Patient completion page | Not browsable on its own - it opens only through an **Access link** you generate in step 1 below (that is the point: patients need no account, and a link reaches exactly one questionnaire) |
+
+Walk the whole product in three steps:
+
+1. **Assign.** Sign in, open the **Assign** tab, search for `Demo` and pick one of the seeded
+   synthetic patients (`Demo Patientone`, `Demo Patienttwo`, `Demo Patientthree`), then
+   **Assign PHQ-9**. Copy the single-use Access link that appears.
+2. **Complete.** Open that link (a private window works well - the patient page holds no session).
+   Answer the PHQ-9 and submit. Answer **Item 9** positively to see the **Crisis Response** appear
+   immediately, client-side, before you submit anything.
+3. **Work the Flag.** Back in the coordinator's **Worklist**, the scored submission has raised a
+   Flag. Open it to see the Score and the reasons that fired, **Acknowledge** it to claim it, then
+   **Resolve** it with a structured reason. Use **Patient history** to see the assessment in context.
+
+A few things worth knowing:
+
+- **The demo resets on every deployment.** Each merge to `main` expunges the whole demo project and
+  rebuilds it from the seeded baseline, so anything you create disappears on the next release
+  ([ADR-0012](docs/adr/0012-gcp-public-demo-deployment.md)). That is deliberate for a public demo and
+  wrong for anything real.
+- **The published login is a plain project member**, not the server's super admin - it can do a Care
+  Coordinator's job and nothing more. The super-admin credentials are generated, kept in Actions
+  secrets, and appear nowhere public.
+- **It is time-boxed.** The environment runs on free GCP credits; when they lapse it is torn down
+  (`terraform destroy`) and this section is replaced with captured evidence. The infrastructure,
+  pipeline, and docs stay in the repo either way.
+
+How it is built and deployed: [`docs/architecture/infrastructure.md`](docs/architecture/infrastructure.md)
+(one GCE VM, Caddy, sslip.io HTTPS) and [`docs/architecture/cicd.md`](docs/architecture/cicd.md)
+(keyless CD over Workload Identity Federation).
+
 ## Documentation map
 
 | What | Where |
@@ -97,11 +139,13 @@ npm run dev:full -- --fresh # force a brand-new project
 ```
 
 `dev:full` starts the Docker Medplum stack, provisions (or reuses) a unified local project with
-**both** a coordinator login and client credentials, seeds the PHQ-9, deploys both Bots + the
-Subscription, then runs the coordinator (http://localhost:3000) and patient (http://localhost:3001)
-dev servers. It prints the coordinator sign-in credentials (also written to `.dev-user.json`). Then:
+**both** a coordinator login and client credentials, seeds the baseline (PHQ-9 + the same synthetic
+patients the public demo carries), deploys both Bots + the Subscription, then runs the coordinator
+(http://localhost:3000) and patient (http://localhost:3001) dev servers. It prints the coordinator
+sign-in credentials (also written to `.dev-user.json`). Then:
 
-1. Sign in to the coordinator, open **Assign**, create a patient, **Assign PHQ-9**, copy the Access link.
+1. Sign in to the coordinator, open **Assign**, search for `Demo` to pick a seeded synthetic patient
+   (or create your own), **Assign PHQ-9**, copy the Access link.
 2. Open the link (patient app), answer the PHQ-9, submit.
 3. Back in the coordinator **Worklist**, the Flag appears; open it to claim and resolve.
 

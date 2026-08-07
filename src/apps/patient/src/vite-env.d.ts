@@ -9,6 +9,11 @@ interface ImportMetaEnv {
    * `npm run medplum:deploy-bots`; the only server endpoint this app calls.
    */
   readonly VITE_ACCESS_LINK_WEBHOOK_URL?: string;
+  /**
+   * `"true"` builds the public-demo variant, which carries the persistent
+   * "synthetic data only" banner (ADR-0012). Unset in local dev.
+   */
+  readonly VITE_DEMO_BANNER?: string;
 }
 
 interface ImportMeta {

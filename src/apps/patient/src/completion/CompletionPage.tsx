@@ -102,7 +102,13 @@ function FullPageCenter({
 }: {
   readonly children: ReactNode;
 }): JSX.Element {
-  return <Center mih="100vh">{children}</Center>;
+  // `flex` (not a viewport height) so the centred states fill whatever the app
+  // shell leaves below the demo banner instead of overflowing past it.
+  return (
+    <Center flex={1} mih="100%">
+      {children}
+    </Center>
+  );
 }
 
 function FriendlyStatusPage({

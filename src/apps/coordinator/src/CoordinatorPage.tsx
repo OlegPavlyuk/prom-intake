@@ -7,6 +7,14 @@ import {
   PatientTimelineScreen,
   type SelectedPatient,
 } from "./timeline/PatientTimelineScreen";
+import {
+  DemoBanner,
+  DEMO_BANNER_HEIGHT,
+  demoBannerEnabled,
+} from "./demo/DemoBanner";
+
+/** Height of the header's toolbar row (title + sign out), banner excluded. */
+const TOOLBAR_HEIGHT = 56;
 
 // The authenticated coordinator surface: a header with a sign-out control and the
 // coordinator screens - the Worklist (#21), assign (#29), and a patient's
@@ -24,10 +32,23 @@ export function CoordinatorPage(): JSX.Element {
     null
   );
 
+  // The demo banner rides inside the header rather than above `AppShell`: the
+  // header is `position: fixed`, so anything in front of it in the document
+  // would simply be covered. `AppShell` also derives the main region's top
+  // padding from this height, so declaring the banner here keeps the whole
+  // layout consistent with no CSS overrides.
+  const headerHeight = demoBannerEnabled()
+    ? {
+        base: TOOLBAR_HEIGHT + DEMO_BANNER_HEIGHT.base,
+        sm: TOOLBAR_HEIGHT + DEMO_BANNER_HEIGHT.sm,
+      }
+    : TOOLBAR_HEIGHT;
+
   return (
-    <AppShell header={{ height: 56 }} padding="md">
+    <AppShell header={{ height: headerHeight }} padding="md">
       <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between">
+        <DemoBanner />
+        <Group h={TOOLBAR_HEIGHT} px="md" justify="space-between">
           <Title order={4}>PROM Intake - Coordinator</Title>
           <Button
             variant="subtle"

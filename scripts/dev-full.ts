@@ -8,7 +8,7 @@
  *      health;
  *   2. provision (or reuse) a unified local project with both a coordinator
  *      login and client credentials (`scripts/provision-local.ts`);
- *   3. seed the PHQ-9 Instrument + CodeSystems;
+ *   3. seed the baseline: PHQ-9 Instrument + CodeSystems + synthetic patients;
  *   4. deploy both Bots (Access-link submit + Scoring) and the Subscription;
  *   5. run the coordinator (:3000) and patient (:3001) Vite dev servers
  *      concurrently, in the foreground.
@@ -82,7 +82,9 @@ async function main(): Promise<void> {
       : `[dev:full]     reusing project ${env.projectId}`
   );
 
-  console.log("[dev:full] 3/4 Seeding PHQ-9 + CodeSystems...");
+  console.log(
+    "[dev:full] 3/4 Seeding PHQ-9 + CodeSystems + synthetic patients..."
+  );
   run("npm", ["run", "medplum:seed"], "Seed");
 
   console.log(

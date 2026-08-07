@@ -157,14 +157,21 @@ function strongSecret(): string {
 
 // --- Bundles ----------------------------------------------------------------
 
-/** Build one app's static bundle with hosted VITE_* values, then clean the env file. */
+/**
+ * Build one app's static bundle with hosted VITE_* values, then clean the env
+ * file. Every bundle these scripts build is by definition a **public-demo**
+ * bundle, so the demo banner flag is set here rather than at each call site -
+ * there is no hosted build that should ship without the "synthetic data only"
+ * notice (ADR-0012, T18). Local builds go through `npm run build:<app>` and are
+ * untouched.
+ */
 export function buildBundle(
   app: "coordinator" | "patient",
   viteEnv: Record<string, string>
 ): void {
   const appDir = resolve(REPO_ROOT, "src/apps", app);
   const envFile = resolve(appDir, ".env.production.local");
-  const body = Object.entries(viteEnv)
+  const body = Object.entries({ VITE_DEMO_BANNER: "true", ...viteEnv })
     .map(([k, v]) => `${k}=${v}`)
     .join("\n");
   writeFileSync(

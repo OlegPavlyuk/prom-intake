@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { Center } from "@mantine/core";
+import { Center, Stack } from "@mantine/core";
 import { SignInForm, useMedplumProfile } from "@medplum/react";
+import { DemoBanner } from "./demo/DemoBanner";
 
 export interface ProtectedRouteProps {
   readonly children: ReactNode;
@@ -15,12 +16,18 @@ export function ProtectedRoute({ children }: ProtectedRouteProps): ReactNode {
   const profile = useMedplumProfile();
 
   if (!profile) {
+    // The gate is the coordinator app's other chrome (the signed-in shell is
+    // `CoordinatorPage`), so it carries the demo banner too - it must be on
+    // every screen, including the one a visitor lands on first.
     return (
-      <Center mih="100vh">
-        <SignInForm onSuccess={() => undefined} disableGoogleAuth>
-          <h1>Coordinator sign in</h1>
-        </SignInForm>
-      </Center>
+      <Stack gap={0} mih="100dvh">
+        <DemoBanner />
+        <Center flex={1}>
+          <SignInForm onSuccess={() => undefined} disableGoogleAuth>
+            <h1>Coordinator sign in</h1>
+          </SignInForm>
+        </Center>
+      </Stack>
     );
   }
 

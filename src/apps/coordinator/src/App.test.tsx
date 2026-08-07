@@ -1,8 +1,11 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MockClient } from "@medplum/mock";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+
+/** The banner's copy, as a visitor reads it (ADR-0012's demo access model). */
+const DEMO_BANNER = /public demo - synthetic data only\./i;
 
 // The app's component seam (the `ui` vitest project): drive the shell through a
 // MockClient in a known session state and assert the auth gate, not Medplum's
@@ -57,5 +60,38 @@ describe("Coordinator app shell", () => {
     expect(
       await screen.findByRole("heading", { name: /coordinator sign in/i })
     ).toBeInTheDocument();
+  });
+});
+
+// The public-demo notice (T18): a build flag the hosted deploy sets, so it is on
+// every screen of a demo build and on none of a local one.
+describe("Coordinator app demo banner", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("shows the banner on the sign-in gate when the demo flag is on", async () => {
+    vi.stubEnv("VITE_DEMO_BANNER", "true");
+
+    render(<App medplum={new MockClient({ profile: null })} />);
+
+    await screen.findByRole("heading", { name: /coordinator sign in/i });
+    expect(screen.getByText(DEMO_BANNER)).toBeInTheDocument();
+  });
+
+  it("shows the banner on the authenticated coordinator page when the demo flag is on", async () => {
+    vi.stubEnv("VITE_DEMO_BANNER", "true");
+
+    render(<App medplum={new MockClient()} />);
+
+    await screen.findByRole("button", { name: /sign out/i });
+    expect(screen.getByText(DEMO_BANNER)).toBeInTheDocument();
+  });
+
+  it("renders no banner when the demo flag is off (local dev default)", async () => {
+    render(<App medplum={new MockClient()} />);
+
+    await screen.findByRole("button", { name: /sign out/i });
+    expect(screen.queryByText(DEMO_BANNER)).not.toBeInTheDocument();
   });
 });

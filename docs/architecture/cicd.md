@@ -84,17 +84,23 @@ four **Actions secrets**, all of them Medplum logins:
 | Secret | Used for |
 | ------ | -------- |
 | `MEDPLUM_SUPER_ADMIN_EMAIL` / `MEDPLUM_SUPER_ADMIN_PASSWORD` | Bootstrapping and expunging the demo project (registration is disabled on the hosted server) |
-| `DEMO_COORDINATOR_EMAIL` / `DEMO_COORDINATOR_PASSWORD` | The published demo coordinator login the deploy invites |
+| `DEMO_COORDINATOR_EMAIL` / `DEMO_COORDINATOR_PASSWORD` | The demo coordinator login the deploy invites - a **plain project member**, published in the README so the demo is self-serve |
 
 Actions masks them in logs, and the deploy script prints only the coordinator **email**, never a
-password.
+password. The two credential sets are deliberately different in kind: the super-admin pair is
+generated, strong, and secret (it can administer the server), while the coordinator pair is
+human-readable and public (it can only do a Care Coordinator's job). Changing
+`DEMO_COORDINATOR_PASSWORD` takes effect on the next deploy or `reset-demo` run, because the reset
+re-invites the coordinator from the secret - so the README and the live login are kept in step by
+re-running the pipeline, not by hand.
 
 ### Reset on every deploy
 
 Demo data is ephemeral by design (ADR-0012): each deploy expunges the whole demo `Project`
-compartment as super admin and rebuilds it, so every release starts from the same seeded baseline.
-The reset asserts that itself - it fails if the fresh project holds any `Patient`,
-`QuestionnaireResponse`, or `Task` - and the deploy then runs the smoke gate. There are **no
+compartment as super admin and rebuilds it, so every release starts from the same seeded baseline -
+PHQ-9 plus the synthetic patients a visitor assigns to. The reset asserts that itself - it fails
+unless the fresh project holds exactly the synthetic `Patient`s and no `QuestionnaireResponse` or
+`Task` - and the deploy then runs the smoke gate. There are **no
 scheduled jobs**; the only unattended trigger in the repo is "CI went green on `main`".
 
 ### The smoke gate
