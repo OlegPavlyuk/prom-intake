@@ -2,8 +2,9 @@
 
 **Status:** Accepted (v1) - established at the first-code milestone (T1, issue #13). Covers the
 Medplum test project used by the integration harness ([ADR-0008](../adr/0008-integration-tests-against-real-medplum.md))
-and the public GCP demo ([Cloud resources](#cloud-resources) substrate + [Hosted runtime](#hosted-runtime-t16),
-[ADR-0012](../adr/0012-gcp-public-demo-deployment.md)). The CD pipeline that automates the deploy lands in T17.
+and the public GCP demo ([Cloud resources](#cloud-resources) substrate + [Hosted runtime](#hosted-runtime),
+[ADR-0012](../adr/0012-gcp-public-demo-deployment.md)). The CD pipeline that runs the deploy
+unattended is [`cicd.md`](cicd.md#continuous-delivery--deployment).
 
 ## Environments
 
@@ -202,8 +203,8 @@ The public portfolio demo runs on a **single Google Compute Engine VM** in
 `prom-intake-demo` (EU region, default `europe-west1`), provisioned by Terraform under
 [`infra/gcp/`](../../infra/gcp/) per [ADR-0012](../adr/0012-gcp-public-demo-deployment.md). The
 substrate (T15) is the VM, its network, its deploy identity, and a cost guardrail; the runtime
-(Caddy + the existing compose stack) is [Hosted runtime](#hosted-runtime-t16) (T16); the CD pipeline
-that automates the deploy lands in T17.
+(Caddy + the existing compose stack) is [Hosted runtime](#hosted-runtime) (T16); the pipeline that
+drives the deploy unattended is [`cicd.md`](cicd.md#continuous-delivery--deployment) (T17).
 
 | Resource | What it is |
 | -------- | ---------- |
@@ -246,12 +247,13 @@ plugin cache are gitignored, and the whole design carries zero cloud keys. CI ru
 `terraform fmt -check` + `terraform validate` on `infra/gcp/` (validate only, no credentials); see
 [`cicd.md`](cicd.md). Full runbook: [`infra/gcp/README.md`](../../infra/gcp/README.md).
 
-## Hosted runtime (T16)
+## Hosted runtime
 
-The application layer the substrate hosts (this ticket) - the same
+The application layer the substrate hosts - the same
 [`infra/medplum/docker-compose.yml`](../../infra/medplum/docker-compose.yml) stack CI exercises,
-plus **Caddy** as the single public front door, brought up by a scripted manual deploy that T17
-turns into the CD pipeline. Per [ADR-0012](../adr/0012-gcp-public-demo-deployment.md).
+plus **Caddy** as the single public front door. Per
+[ADR-0012](../adr/0012-gcp-public-demo-deployment.md). One script deploys it, whether a developer
+runs it or [the pipeline](cicd.md#continuous-delivery--deployment) does.
 
 ### Topology - Caddy is the only public component
 
@@ -306,25 +308,42 @@ produces, so [`medplum:seed`](#local-medplum-test-project) and
 is idempotent: a surviving project (its `.env` creds still authenticate) is reused; only a wiped
 server re-provisions.
 
-### Deploy + smoke scripts
+### Deploy, reset + smoke scripts
+
+Three scripts share one vocabulary
+([`scripts/hosted-runtime.ts`](../../scripts/hosted-runtime.ts): the hosts, the secrets, bundle
+builds, and the IAP file-shipping helpers). Everything in it is **env-first** - the pipeline supplies
+hosts and secrets from repo variables/secrets, a developer's machine falls back to
+`terraform -chdir=infra/gcp output` and the gitignored `infra/gcp/.deploy-secrets.json` (generated
+once and reused, so the super-admin password stays consistent with what the server seeded on first
+boot).
 
 `npm run deploy:hosted` ([`scripts/deploy-hosted.ts`](../../scripts/deploy-hosted.ts)) is the whole
-runtime as one idempotent script - the payload T17 automates:
+runtime as one idempotent script - the payload the deploy workflow runs:
 
-1. read the `sslip.io` hosts from `terraform -chdir=infra/gcp output`;
-2. load-or-generate the hosted secrets - env override for T17's Actions secrets, else a gitignored
-   `infra/gcp/.deploy-secrets.json` generated once and reused (so the super-admin password stays
-   consistent with what the server seeded on first boot);
-3. render the hardened config; build the coordinator bundle with hosted `VITE_*` values;
-4. ship compose + overlay + Caddyfile + config + bundle to the VM **over IAP** and bring the stack
+1. resolve the `sslip.io` hosts and load the hosted secrets;
+2. render the hardened config; build the coordinator bundle with hosted `VITE_*` values;
+3. ship compose + overlay + Caddyfile + config + bundle to the VM **over IAP** and bring the stack
    up;
-5. wait for Medplum health over public HTTPS (proves Let's Encrypt issued);
-6. provision (super-admin) -> seed -> deploy-bots;
-7. build the patient bundle with the now-known `/webhook/<membership-id>` path, ship it, and run the
-   smoke check.
+4. wait for Medplum health over public HTTPS (proves Let's Encrypt issued);
+5. **reset + re-seed** the demo project (below);
+6. run the smoke check.
+
+`npm run reset:hosted` ([`scripts/reset-hosted.ts`](../../scripts/reset-hosted.ts)) is step 5 on its
+own - the deploy's second half, and the `reset-demo` workflow's whole payload. Demo data is
+**ephemeral by design** (ADR-0012), and a reset is a **project expunge** rather than a selective
+delete: the super admin hard-deletes the demo `Project` compartment
+(`POST fhir/R4/Project/<id>/$expunge?everything=true`, polled until the project is really gone), then
+provisioning rebuilds it - fresh project, coordinator invite, client credentials - followed by
+`medplum:seed` and `medplum:deploy-bots`. Because the project is recreated, the Access-link Bot gets
+a **new `ProjectMembership`**, so the `/webhook/<membership-id>` path changes; the patient bundle
+embeds that path at build time, so the reset rebuilds and re-ships it (the coordinator bundle is
+host-only and untouched). It ends by asserting the baseline - the seeded `Questionnaire` is present
+and there are zero `Patient`, `QuestionnaireResponse` and `Task` resources - so a missed expunge
+fails the run instead of shipping a non-deterministic demo.
 
 `npm run smoke:hosted` ([`scripts/smoke-hosted.ts`](../../scripts/smoke-hosted.ts)) is the
-deployment's behavioural seam (the deploy's final gate; reused verbatim by T17). Lightweight,
+deployment's behavioural seam - the gate at the end of both the deploy and the reset. Lightweight,
 **HTTP-level only** (no browser): over public HTTPS it asserts Medplum health on `api.`; `app.` and
 `forms.` serve their bundles (200 + `<title>` marker); the seeded PHQ-9 `Questionnaire` is queryable
 (client-credentials read); and an Access-link `open` round-trips through `forms./webhook/*` (a bogus

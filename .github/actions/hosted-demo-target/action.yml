@@ -1,0 +1,92 @@
+name: Hosted demo target
+description: >
+  Authenticate to GCP keylessly via Workload Identity Federation and put the
+  demo VM's coordinates + the three sslip.io hosts into the job environment,
+  where scripts/hosted-runtime.ts picks them up.
+
+inputs:
+  workload_identity_provider:
+    description: Full resource name of the WIF provider (terraform output wif_provider_name).
+    required: true
+  service_account:
+    description: Deploy service account to impersonate (terraform output deploy_service_account_email).
+    required: true
+  project_id:
+    description: GCP project that hosts the demo.
+    required: true
+  vm_name:
+    description: Demo VM instance name (terraform output vm_name).
+    required: false
+    default: prom-intake-demo
+  vm_zone:
+    description: Zone the demo VM runs in (terraform output vm_zone).
+    required: false
+    default: europe-west1-b
+
+runs:
+  using: composite
+  steps:
+    # Keyless: GitHub's OIDC token is exchanged for a short-lived access token at
+    # run time (ADR-0012). No service-account key exists in this repo or in GCP.
+    - name: Authenticate to GCP (Workload Identity Federation)
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        service_account: ${{ inputs.service_account }}
+
+    - name: Set up gcloud
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ inputs.project_id }}
+
+    # The hostnames encode the VM's reserved IP (ADR-0012), so the instance
+    # itself is the source of truth - no host list to keep in sync with
+    # Terraform. `compute.instances.get` is part of the deploy SA's
+    # roles/compute.osAdminLogin; nothing extra is granted for this read.
+    - name: Resolve the demo hosts from the VM's reserved IP
+      shell: bash
+      env:
+        VM_NAME: ${{ inputs.vm_name }}
+        VM_ZONE: ${{ inputs.vm_zone }}
+        GCP_PROJECT: ${{ inputs.project_id }}
+      run: |
+        set -euo pipefail
+        ip=$(gcloud compute instances describe "$VM_NAME" \
+          --zone "$VM_ZONE" --project "$GCP_PROJECT" \
+          --format 'get(networkInterfaces[0].accessConfigs[0].natIP)')
+        if [ -z "$ip" ]; then
+          echo "::error::the VM has no external IP - is the substrate applied?"
+          exit 1
+        fi
+        echo "Demo IP: $ip"
+        {
+          echo "GCP_PROJECT=$GCP_PROJECT"
+          echo "VM_NAME=$VM_NAME"
+          echo "VM_ZONE=$VM_ZONE"
+          echo "API_HOST=api.$ip.sslip.io"
+          echo "COORDINATOR_HOST=app.$ip.sslip.io"
+          echo "PATIENT_HOST=forms.$ip.sslip.io"
+        } >>"$GITHUB_ENV"
+
+    # The first IAP-tunnelled SSH of a run also registers this runner's freshly
+    # generated key with OS Login, which takes a moment to propagate. Absorb that
+    # here so a deploy never fails on a cold-start race instead of on real work.
+    - name: Wait for IAP SSH
+      shell: bash
+      env:
+        VM_NAME: ${{ inputs.vm_name }}
+        VM_ZONE: ${{ inputs.vm_zone }}
+        GCP_PROJECT: ${{ inputs.project_id }}
+      run: |
+        set -uo pipefail
+        for attempt in 1 2 3 4 5; do
+          if gcloud compute ssh "$VM_NAME" --tunnel-through-iap \
+              --zone "$VM_ZONE" --project "$GCP_PROJECT" --quiet --command=true; then
+            echo "IAP SSH ready (attempt $attempt)."
+            exit 0
+          fi
+          echo "IAP SSH not ready yet (attempt $attempt); retrying in 15s..."
+          sleep 15
+        done
+        echo "::error::could not open an IAP SSH session to $VM_NAME"
+        exit 1

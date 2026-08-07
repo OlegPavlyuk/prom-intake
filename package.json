@@ -32,6 +32,7 @@
     "medplum:deploy-bots": "tsx scripts/deploy-bots.ts",
     "medplum:provision-hosted": "tsx scripts/provision-hosted.ts",
     "deploy:hosted": "tsx scripts/deploy-hosted.ts",
+    "reset:hosted": "tsx scripts/reset-hosted.ts",
     "smoke:hosted": "tsx scripts/smoke-hosted.ts",
     "prepare": "husky"
   },

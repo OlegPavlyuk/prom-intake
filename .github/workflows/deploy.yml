@@ -1,0 +1,75 @@
+name: Deploy demo
+
+# Continuous delivery for the public demo (ADR-0012, #59). Every commit that
+# lands on `main` WITH CI GREEN redeploys the demo VM, resets + re-seeds the demo
+# project, and is gated by the HTTPS smoke check. `workflow_run` (rather than a
+# plain `push`) is what makes "after CI is green" true: it fires once CI has
+# finished and the job below refuses to run unless it succeeded.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time - two runs would fight over the same VM. Never cancel a
+# run in flight: it may be mid-way through mutating the VM.
+concurrency:
+  group: hosted-demo
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # Mint the OIDC token WIF exchanges. No cloud key is stored.
+
+jobs:
+  deploy:
+    name: build -> ship -> reset -> smoke
+    # `workflow_run` fires for failed CI runs too; only a green one may deploy.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A `workflow_run` job checks out the default branch by default; deploy
+          # the exact commit CI just passed instead.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - uses: ./.github/actions/hosted-demo-target
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      # The whole deploy is one script (`scripts/deploy-hosted.ts`), the same one
+      # a developer runs by hand: build both bundles, ship them + the compose /
+      # Caddy / Medplum config to the VM over IAP, bring the stack up, reset +
+      # re-seed the demo project, deploy the Bots, then smoke-check over public
+      # HTTPS. A failing smoke check exits non-zero and fails this step.
+      - name: Deploy, reset and smoke-check the demo
+        env:
+          MEDPLUM_SUPER_ADMIN_EMAIL: ${{ secrets.MEDPLUM_SUPER_ADMIN_EMAIL }}
+          MEDPLUM_SUPER_ADMIN_PASSWORD: ${{ secrets.MEDPLUM_SUPER_ADMIN_PASSWORD }}
+          DEMO_COORDINATOR_EMAIL: ${{ secrets.DEMO_COORDINATOR_EMAIL }}
+          DEMO_COORDINATOR_PASSWORD: ${{ secrets.DEMO_COORDINATOR_PASSWORD }}
+        run: npm run deploy:hosted
+
+      - name: Summarise
+        if: success()
+        run: |
+          {
+            echo "### Demo deployed"
+            echo ""
+            echo "- Coordinator: https://${COORDINATOR_HOST}/"
+            echo "- Patient:     https://${PATIENT_HOST}/"
+            echo "- Medplum API: https://${API_HOST}/"
+            echo ""
+            echo "Demo data was reset to the seeded baseline by this deploy."
+          } >>"$GITHUB_STEP_SUMMARY"
