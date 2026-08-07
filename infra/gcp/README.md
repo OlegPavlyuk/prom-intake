@@ -77,8 +77,9 @@ Everything else the pipeline discovers at run time: the composite action
 VM's reserved IP and derives the three `sslip.io` hosts from it, so no hostname is duplicated into
 GitHub configuration.
 
-**There is deliberately no cloud-credential secret.** The only Actions secrets are the four Medplum
-logins (`MEDPLUM_SUPER_ADMIN_*`, `DEMO_COORDINATOR_*`); see
+**There is deliberately no cloud-credential secret.** The only Actions secrets are Medplum logins:
+`MEDPLUM_SUPER_ADMIN_*` (required) and `DEMO_COORDINATOR_*` (optional - it overrides the coordinator
+login that is published in the README and lives in `scripts/hosted-demo.ts`); see
 [`cicd.md`](../../docs/architecture/cicd.md#continuous-delivery--deployment). Creating a
 service-account key would violate [ADR-0012](../../docs/adr/0012-gcp-public-demo-deployment.md).
 

@@ -10,9 +10,11 @@
  *
  *   1. super-admin login;
  *   2. find-or-create the demo `Project`;
- *   3. invite the demo coordinator as a project admin with a KNOWN password and
- *      `sendEmail: false` (headless - no SMTP on the demo box), `upsert: true`
- *      (idempotent);
+ *   3. invite the demo coordinator as a PLAIN project member with a KNOWN
+ *      password and `sendEmail: false` (headless - no SMTP on the demo box),
+ *      `upsert: true` (idempotent). Not an admin: this login is published in the
+ *      README (T18), so it gets coordinator-level access only and project
+ *      administration stays with the super admin;
  *   4. create a `ClientApplication` in that project (client-credentials for
  *      `medplum:seed` / `medplum:deploy-bots` / the harness).
  *
@@ -138,9 +140,14 @@ async function provisionFresh(baseUrl: string): Promise<DevUserFile> {
     throw new Error("Created project has no id");
   }
 
-  // Invite the coordinator as a project admin with a known password. `sendEmail:
-  // false` keeps it headless (no SMTP on the demo box); `upsert` makes re-runs
-  // against a surviving project idempotent.
+  // Invite the coordinator with a known password, as a **plain project member**:
+  // no `membership.admin`, because this login is published in the README (T18)
+  // and a Care Coordinator's job needs none of a project admin's powers (inviting
+  // users, editing the project, minting clients). Project administration stays
+  // with the super admin, whose credentials stay secret - so the published login
+  // can do exactly what the product says the role does, and no more.
+  // `sendEmail: false` keeps it headless (no SMTP on the demo box); `upsert`
+  // makes re-runs against a surviving project idempotent.
   const membership = (await admin.invite(projectId, {
     resourceType: "Practitioner",
     firstName: "Demo",
@@ -149,9 +156,10 @@ async function provisionFresh(baseUrl: string): Promise<DevUserFile> {
     password,
     sendEmail: false,
     upsert: true,
-    membership: { admin: true },
   })) as ProjectMembership;
-  console.log(`Coordinator invited (membership ${membership.id}, admin).`);
+  console.log(
+    `Coordinator invited (membership ${membership.id}, plain project member).`
+  );
 
   // Mint client credentials in the project via the admin endpoint (this also
   // creates the client's ProjectMembership - a plain FHIR create would omit it

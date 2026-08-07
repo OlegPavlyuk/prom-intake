@@ -28,7 +28,7 @@
     "medplum:provision": "tsx scripts/provision-medplum.ts",
     "medplum:provision-local": "tsx scripts/provision-local.ts",
     "medplum:dev-user": "tsx scripts/register-dev-user.ts",
-    "medplum:seed": "tsx scripts/seed-instruments.ts",
+    "medplum:seed": "tsx scripts/seed-baseline.ts",
     "medplum:deploy-bots": "tsx scripts/deploy-bots.ts",
     "medplum:provision-hosted": "tsx scripts/provision-hosted.ts",
     "deploy:hosted": "tsx scripts/deploy-hosted.ts",

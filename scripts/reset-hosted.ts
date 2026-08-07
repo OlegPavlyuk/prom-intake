@@ -36,7 +36,7 @@ import {
 import {
   applyHostsToEnv,
   applySecretsToEnv,
-  buildBundle,
+  buildDemoBundle,
   loadOrGenerateSecrets,
   readWebhookPath,
   REPO_ROOT,
@@ -48,6 +48,7 @@ import {
   useNodeSessionStorage,
   type Hosts,
 } from "./hosted-demo.js";
+import { SYNTHETIC_PATIENTS } from "./synthetic-patients.js";
 
 useNodeSessionStorage();
 
@@ -77,7 +78,9 @@ export async function resetHostedDemo(hosts: Hosts): Promise<ResetResult> {
   const env = await provisionHosted();
   console.log(`[reset]     project ${env.projectId}`);
 
-  console.log("[reset] 3/5 Seeding PHQ-9 + CodeSystems...");
+  console.log(
+    "[reset] 3/5 Seeding PHQ-9 + CodeSystems + synthetic patients..."
+  );
   run("npm", ["run", "medplum:seed"], "Seed");
 
   console.log(
@@ -89,7 +92,7 @@ export async function resetHostedDemo(hosts: Hosts): Promise<ResetResult> {
   console.log(
     "[reset] 5/5 Rebuilding + shipping the patient bundle, then checking the baseline..."
   );
-  buildBundle("patient", {
+  buildDemoBundle("patient", {
     VITE_MEDPLUM_BASE_URL: apiBase,
     VITE_ACCESS_LINK_WEBHOOK_URL: webhookPath,
   });
@@ -162,9 +165,10 @@ async function waitForGone(
 }
 
 /**
- * The reset's own gate: the fresh project holds the seeded instrument and
- * **no** demo activity. Reads through the client credentials provisioning just
- * wrote, i.e. through the same surface the apps use.
+ * The reset's own gate: the fresh project holds exactly the seeded baseline -
+ * the Instrument and the synthetic patients (T18) - and **no** demo activity on
+ * top of it. Reads through the client credentials provisioning just wrote, i.e.
+ * through the same surface the apps use.
  */
 async function assertSeededBaseline(apiBase: string): Promise<void> {
   const envPath = resolve(REPO_ROOT, ".env");
@@ -181,10 +185,22 @@ async function assertSeededBaseline(apiBase: string): Promise<void> {
   if (questionnaires === 0) {
     throw new Error("reset left no seeded Questionnaire in the demo project");
   }
-  // Everything a visitor can create lives in these three types - an Assignment
-  // and a Flag are both `Task`s (ADR-0001, ADR-0002). A non-zero count means the
-  // expunge missed data and the release would not start deterministic.
-  for (const type of ["Patient", "QuestionnaireResponse", "Task"] as const) {
+  // The synthetic patients ARE the baseline a visitor lands on, so the demo is
+  // only deterministic if they are all present and nothing extra is: an exact
+  // count catches both a seed that half-ran and an expunge that missed a
+  // visitor's patient.
+  const patients = await countOf(medplum, "Patient");
+  if (patients !== SYNTHETIC_PATIENTS.length) {
+    throw new Error(
+      `reset left ${patients} Patient(s) in the demo project, expected the ` +
+        `${SYNTHETIC_PATIENTS.length} synthetic ones`
+    );
+  }
+  // The rest of what a visitor can create lives in these two types - an
+  // Assignment and a Flag are both `Task`s (ADR-0001, ADR-0002). A non-zero
+  // count means the expunge missed data and the release would not start
+  // deterministic.
+  for (const type of ["QuestionnaireResponse", "Task"] as const) {
     const remaining = await countOf(medplum, type);
     if (remaining !== 0) {
       throw new Error(
@@ -193,7 +209,8 @@ async function assertSeededBaseline(apiBase: string): Promise<void> {
     }
   }
   console.log(
-    `[reset]     baseline verified: ${questionnaires} seeded Questionnaire(s), no demo activity.`
+    `[reset]     baseline verified: ${questionnaires} seeded Questionnaire(s), ` +
+      `${patients} synthetic patient(s), no demo activity.`
   );
 }
 

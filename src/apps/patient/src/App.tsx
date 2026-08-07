@@ -1,7 +1,8 @@
 import type { MedplumClient } from "@medplum/core";
-import { MantineProvider } from "@mantine/core";
+import { MantineProvider, Stack } from "@mantine/core";
 import { MedplumProvider } from "@medplum/react";
 import { CompletionPage } from "./completion/CompletionPage";
+import { DemoBanner } from "./demo/DemoBanner";
 import {
   resolvePatientAccessLink,
   submitPatientResponse,
@@ -37,7 +38,13 @@ export function App({
   return (
     <MedplumProvider medplum={medplum}>
       <MantineProvider>
-        <CompletionPage token={token} resolve={resolve} submit={submit} />
+        {/* Full-height column so the demo banner (when this is a demo build)
+            takes the top strip and the page fills exactly what is left - the
+            page's own centred states grow into the remaining space. */}
+        <Stack gap={0} mih="100dvh">
+          <DemoBanner />
+          <CompletionPage token={token} resolve={resolve} submit={submit} />
+        </Stack>
       </MantineProvider>
     </MedplumProvider>
   );

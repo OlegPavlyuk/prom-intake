@@ -7,8 +7,9 @@
  *
  * Over public HTTPS it asserts, and exits non-zero on the first-seen failure(s):
  *   1. Medplum healthcheck is OK on api.
- *   2. app. serves the coordinator bundle (200 + its <title> marker).
- *   3. forms. serves the patient bundle (200 + its <title> marker).
+ *   2. app. serves the coordinator bundle (200 + its <title> marker) and that
+ *      bundle carries the demo banner.
+ *   3. forms. serves the patient bundle, likewise.
  *   4. the seeded PHQ-9 Questionnaire is queryable (client-credentials FHIR read).
  *   5. an Access-link `open` round-trips through forms./webhook/* - proving the
  *      same-origin proxy reaches the Bot (a bogus token yields the Bot's own
@@ -37,6 +38,14 @@ useNodeSessionStorage();
 const BOT_IDENTIFIER = "https://prom-intake.example/bot|access-link-submit";
 const COORDINATOR_TITLE = "PROM Intake - Coordinator";
 const PATIENT_TITLE = "PROM Intake - Complete your questionnaire";
+/**
+ * A distinctive slice of the demo banner's copy (T18). Both apps hold it as a
+ * single string literal, so it survives bundling verbatim - and it is compiled in
+ * only when `VITE_DEMO_BANNER` was set, which is what makes finding it proof that
+ * the deployed demo is labelled "synthetic data only" rather than passing for a
+ * real clinical system.
+ */
+const DEMO_BANNER_MARKER = "Public demo - synthetic data only.";
 
 async function main(): Promise<void> {
   const envPath = resolve(process.cwd(), ".env");
@@ -149,7 +158,10 @@ async function check(
   }
 }
 
-/** A served SPA bundle: HTTP 200 whose index.html carries the app's <title>. */
+/**
+ * A served SPA bundle: HTTP 200 whose index.html carries the app's <title>, and
+ * whose entry script carries the demo banner.
+ */
 async function assertServesBundle(
   host: string,
   titleMarker: string
@@ -162,6 +174,41 @@ async function assertServesBundle(
   if (!html.includes(titleMarker)) {
     throw new Error(`served HTML missing marker "${titleMarker}"`);
   }
+  await assertBundleIsLabelledDemo(host, html);
+}
+
+/**
+ * The banner is a build-flag feature, so "is this deployment labelled as a demo?"
+ * is answerable without a browser: fetch the scripts the served HTML points at
+ * and look for the copy. A bundle built without `VITE_DEMO_BANNER` folds the flag
+ * to `false` and drops the string, so its absence means an unlabelled public
+ * deployment - exactly the thing that must never ship (ADR-0012).
+ *
+ * Every referenced chunk is searched, not just the entry one, so a future Vite
+ * code-split moves the string without failing an otherwise good deploy.
+ */
+async function assertBundleIsLabelledDemo(
+  host: string,
+  html: string
+): Promise<void> {
+  const scripts = [...html.matchAll(/(?:src|href)="([^"]+\.js)"/g)].flatMap(
+    (m) => (m[1] ? [m[1]] : [])
+  );
+  if (scripts.length === 0) {
+    throw new Error("served HTML references no script to check");
+  }
+  for (const src of scripts) {
+    const res = await fetch(new URL(src, `https://${host}/`));
+    if (!res.ok) {
+      throw new Error(`GET https://${host}${src} -> HTTP ${res.status}`);
+    }
+    if ((await res.text()).includes(DEMO_BANNER_MARKER)) {
+      return;
+    }
+  }
+  throw new Error(
+    `no bundle on ${host} carries the demo banner - it was built without VITE_DEMO_BANNER`
+  );
 }
 
 /** Log in with the client credentials in `.env` (client-credentials grant). */

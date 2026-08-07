@@ -83,18 +83,27 @@ four **Actions secrets**, all of them Medplum logins:
 
 | Secret | Used for |
 | ------ | -------- |
-| `MEDPLUM_SUPER_ADMIN_EMAIL` / `MEDPLUM_SUPER_ADMIN_PASSWORD` | Bootstrapping and expunging the demo project (registration is disabled on the hosted server) |
-| `DEMO_COORDINATOR_EMAIL` / `DEMO_COORDINATOR_PASSWORD` | The published demo coordinator login the deploy invites |
+| `MEDPLUM_SUPER_ADMIN_EMAIL` / `MEDPLUM_SUPER_ADMIN_PASSWORD` | **Required.** Bootstrapping and expunging the demo project (registration is disabled on the hosted server) |
+| `DEMO_COORDINATOR_EMAIL` / `DEMO_COORDINATOR_PASSWORD` | **Optional override** of the published coordinator login (below), for rotating it without a code change |
 
-Actions masks them in logs, and the deploy script prints only the coordinator **email**, never a
-password.
+The two credential sets are deliberately different in kind. The **super admin** can administer the
+server, so it is generated, strong, and secret; Actions masks it in logs and the deploy script prints
+only the coordinator **email**, never a password. The **demo coordinator** is a plain project member
+on a throwaway demo whose whole point is that strangers use it, so it is *published* - and therefore
+lives in the repo, as `PUBLISHED_COORDINATOR_LOGIN` in
+[`scripts/hosted-demo.ts`](../../scripts/hosted-demo.ts), the same value the README prints. Keeping
+it there rather than generating it is what stops the README and the live login from drifting apart.
+Setting the `DEMO_COORDINATOR_*` secrets overrides it; either way the change takes effect on the next
+deploy or `reset-demo` run, because the reset re-invites the coordinator - and the README must be
+updated to match by hand.
 
 ### Reset on every deploy
 
 Demo data is ephemeral by design (ADR-0012): each deploy expunges the whole demo `Project`
-compartment as super admin and rebuilds it, so every release starts from the same seeded baseline.
-The reset asserts that itself - it fails if the fresh project holds any `Patient`,
-`QuestionnaireResponse`, or `Task` - and the deploy then runs the smoke gate. There are **no
+compartment as super admin and rebuilds it, so every release starts from the same seeded baseline -
+PHQ-9 plus the synthetic patients a visitor assigns to. The reset asserts that itself - it fails
+unless the fresh project holds exactly the synthetic `Patient`s and no `QuestionnaireResponse` or
+`Task` - and the deploy then runs the smoke gate. There are **no
 scheduled jobs**; the only unattended trigger in the repo is "CI went green on `main`".
 
 ### The smoke gate
