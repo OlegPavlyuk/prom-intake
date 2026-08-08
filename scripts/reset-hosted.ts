@@ -12,6 +12,11 @@
  * which is what makes "exactly the seeded baseline" checkable rather than hoped
  * for - `assertSeededBaseline` checks it at the end.
  *
+ * The demo coordinator's `User` is expunged alongside the project. A `User` is
+ * server-scoped, so it would otherwise outlive the compartment and keep whatever
+ * password it was first created with, quietly ignoring the published one (#67).
+ * The super admin's own account is never touched.
+ *
  * Because the project is recreated, the Access-link Bot gets a new
  * `ProjectMembership`, so the `/webhook/<membership-id>` path changes. The
  * patient bundle embeds that path at build time, so a reset necessarily rebuilds
@@ -106,6 +111,14 @@ export async function resetHostedDemo(hosts: Hosts): Promise<ResetResult> {
  * Hard-delete every project carrying the demo's exact name, then wait until it
  * is really gone. Medplum may answer the expunge asynchronously, so the search
  * going empty - not the response code - is the proof.
+ *
+ * The coordinator's `User` goes too. A `User` is **server-scoped, not
+ * project-scoped**, so expunging the Project takes its `ProjectMembership` but
+ * leaves the account itself standing - and `invite`'s `upsert` then attaches a
+ * fresh membership to that surviving account **without touching its password**.
+ * The published password would silently never take effect (#67). Removing the
+ * account is what makes the coordinator login part of the rebuilt baseline
+ * rather than a relic of whenever the demo was first stood up.
  */
 async function expungeDemoProject(apiBase: string): Promise<void> {
   const name = demoProjectName();
@@ -114,7 +127,6 @@ async function expungeDemoProject(apiBase: string): Promise<void> {
   const doomed = await projectsNamed(admin, name);
   if (doomed.length === 0) {
     console.log(`[reset]     no project named "${name}" - nothing to expunge.`);
-    return;
   }
 
   let lastError: unknown = null;
@@ -132,7 +144,37 @@ async function expungeDemoProject(apiBase: string): Promise<void> {
     }
   }
 
-  await waitForGone(admin, name, lastError);
+  if (doomed.length > 0) {
+    await waitForGone(admin, name, lastError);
+  }
+  await expungeCoordinatorUser(admin);
+}
+
+/**
+ * Remove the demo coordinator's account so the next provision recreates it from
+ * the configured password. Matched on the configured email alone, which is never
+ * the super admin's - that account owns the server and must survive every reset.
+ */
+async function expungeCoordinatorUser(admin: MedplumClient): Promise<void> {
+  const email = requireEnv("DEMO_COORDINATOR_EMAIL");
+  if (email === process.env.MEDPLUM_SUPER_ADMIN_EMAIL) {
+    throw new Error(
+      "DEMO_COORDINATOR_EMAIL is the super-admin email - refusing to expunge the server's own admin"
+    );
+  }
+
+  const users = await admin.searchResources("User", { email });
+  for (const user of users) {
+    await admin.post(`fhir/R4/User/${user.id}/$expunge`, {});
+    console.log(`[reset]     expunged coordinator User ${user.id}.`);
+  }
+  const left = await admin.searchResources("User", { email });
+  if (left.length > 0) {
+    throw new Error(
+      `${left.length} coordinator User(s) for ${email} survived the expunge - ` +
+        "the published password would not take effect"
+    );
+  }
 }
 
 /** Project search by `name` is a contains-match, so filter to exact hits. */
