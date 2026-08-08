@@ -63,3 +63,15 @@ resource "google_service_account_iam_member" "deploy_wif" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repo}"
 }
+
+# `gcloud compute ssh` against an instance that runs AS a service account also
+# needs actAs on that service account - without it the IAP session is refused
+# before the tunnel is even attempted. Scoped to the VM's own runtime SA rather
+# than granted project-wide, so the deploy identity can act as this one instance
+# and nothing else. A human running the deploy by hand never needed this (Owner
+# implies actAs), which is why it only surfaced on the first unattended run (#66).
+resource "google_service_account_iam_member" "deploy_act_as_vm" {
+  service_account_id = google_service_account.vm.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.deploy.email}"
+}

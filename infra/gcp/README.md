@@ -16,7 +16,7 @@ never creates or bills the project - only resources inside it.
 | --- | --- |
 | Network | Custom VPC + subnet, reserved static external IP, firewall (80/443 from anywhere; SSH 22 **only** from the IAP range) |
 | Compute | One `e2-medium` Debian 12 VM, Docker + Compose installed via startup script, OS Login on, dedicated least-privilege runtime SA |
-| Identity | Deploy service account, Workload Identity Federation pool + provider trusted for `OlegPavlyuk/prom-intake`, keyless (no SA keys) |
+| Identity | Deploy service account, Workload Identity Federation pool + provider trusted for `OlegPavlyuk/prom-intake`, keyless (no SA keys). Scoped to an IAP-tunnelled OS Login deploy: `compute.osAdminLogin`, `iap.tunnelResourceAccessor` on the one instance, and `iam.serviceAccountUser` on the VM's runtime SA (`gcloud compute ssh` needs `actAs` on the SA an instance runs as) |
 | Cost | Billing budget on the demo project with 50/90/100% alert thresholds |
 
 ## Prerequisites
