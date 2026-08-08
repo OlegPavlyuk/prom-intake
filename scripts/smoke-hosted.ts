@@ -11,14 +11,20 @@
  *      bundle carries the demo banner.
  *   3. forms. serves the patient bundle, likewise.
  *   4. the seeded PHQ-9 Questionnaire is queryable (client-credentials FHIR read).
- *   5. an Access-link `open` round-trips through forms./webhook/* - proving the
- *      same-origin proxy reaches the Bot (a bogus token yields the Bot's own
- *      `{ status: "not-found" }`, not a Caddy 404/502).
+ *   5. an Access-link `open` round-trips through the `/webhook/<id>` the SERVED
+ *      patient bundle carries - proving the same-origin proxy reaches the Bot (a
+ *      bogus token yields the Bot's own `{ status: "not-found" }`, not a Caddy
+ *      404/502) AND that the bundle on the VM is the one this run built.
+ *
+ * Checks 2, 3 and 5 deliberately read what is **served** rather than what was
+ * built: a ship can succeed against a directory nothing serves (see
+ * `shipBundle`), and every other check here would still pass because they reach
+ * Medplum directly rather than through the bundle.
  *
  * Hosts come from env (API_HOST / COORDINATOR_HOST / PATIENT_HOST); if unset it
  * falls back to `terraform -chdir=infra/gcp output`. Checks 4-5 use the client
- * credentials in `.env`. The webhook path comes from WEBHOOK_PATH if set, else it
- * is discovered from the deployed Access-link Bot's ProjectMembership.
+ * credentials in `.env`. When the caller just deployed it exports WEBHOOK_PATH,
+ * and check 5 additionally asserts the served bundle matches it.
  *
  * Usage:
  *   npm run smoke:hosted
@@ -35,7 +41,6 @@ import {
 
 useNodeSessionStorage();
 
-const BOT_IDENTIFIER = "https://prom-intake.example/bot|access-link-submit";
 const COORDINATOR_TITLE = "PROM Intake - Coordinator";
 const PATIENT_TITLE = "PROM Intake - Complete your questionnaire";
 /**
@@ -96,34 +101,32 @@ async function main(): Promise<void> {
 
   results.push(
     await check(
-      "the SERVED patient bundle's webhook path is the deployed Bot's",
+      "Access-link open round-trips through the SERVED bundle's webhook path",
       async () => {
-        const served = await servedWebhookPath(hosts.patientHost);
-        const live = await discoverWebhookPath(medplum);
-        // The reset recreates the project, so the Bot's ProjectMembership - and
-        // with it the `/webhook/<id>` the patient bundle hard-codes at build
-        // time - changes on every run. If the rebuilt bundle did not actually
-        // reach the front door, the site keeps serving a path that 404s and
-        // every patient link is dead, while every other check here still passes
-        // (they reach Medplum directly rather than through the bundle). Compare
-        // what is really being served.
-        if (served !== live) {
+        // Drive the path the served bundle actually carries - the request a real
+        // patient's browser makes. The reset recreates the project, so the Bot's
+        // ProjectMembership (and with it the `/webhook/<id>` the patient bundle
+        // hard-codes at build time) changes on every run; if the rebuilt bundle
+        // did not reach the front door, this is the only check that notices,
+        // because every other one talks to Medplum directly rather than through
+        // the bundle.
+        const webhookPath = await servedWebhookPath(hosts.patientHost);
+
+        // When the caller just deployed (the pipeline exports WEBHOOK_PATH), we
+        // also know what the bundle SHOULD say - so a mismatch can be named
+        // outright instead of surfacing as a puzzling 404 below. Read-only
+        // discovery is deliberately not a fallback here: it needs
+        // `ProjectMembership`, which Medplum restricts to project admins, and
+        // the demo's client credentials are not one.
+        const deployed = process.env.WEBHOOK_PATH;
+        if (deployed && deployed !== webhookPath) {
           throw new Error(
-            `served bundle points at ${served} but the deployed Bot is at ${live} - ` +
-              "the patient bundle on the VM is stale"
+            `served bundle points at ${webhookPath} but this run deployed ${deployed} - ` +
+              "the patient bundle on the VM is stale (was the reset run as a different " +
+              "identity than the last deploy? see infrastructure.md)"
           );
         }
-      }
-    )
-  );
 
-  results.push(
-    await check(
-      "Access-link open round-trips through forms./webhook/*",
-      async () => {
-        // Use the path the SERVED bundle carries - that is the request a real
-        // patient's browser makes.
-        const webhookPath = await servedWebhookPath(hosts.patientHost);
         const url = `https://${hosts.patientHost}${webhookPath}`;
         const res = await fetch(url, {
           method: "POST",
@@ -263,21 +266,6 @@ async function servedWebhookPath(host: string): Promise<string> {
     }
   }
   throw new Error(`no /webhook/<id> found in the bundle served by ${host}`);
-}
-
-/** Resolve the public webhook path from the deployed Access-link Bot's membership. */
-async function discoverWebhookPath(medplum: MedplumClient): Promise<string> {
-  const bot = await medplum.searchOne("Bot", { identifier: BOT_IDENTIFIER });
-  if (!bot?.id) {
-    throw new Error("Access-link Bot not found (deploy-bots did not run?)");
-  }
-  const membership = await medplum.searchOne("ProjectMembership", {
-    profile: `Bot/${bot.id}`,
-  });
-  if (!membership?.id) {
-    throw new Error("Access-link Bot has no ProjectMembership");
-  }
-  return `/webhook/${membership.id}`;
 }
 
 main().catch((err) => {
