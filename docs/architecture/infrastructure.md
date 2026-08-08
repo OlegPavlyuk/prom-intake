@@ -362,8 +362,11 @@ runtime as one idempotent script - the payload the deploy workflow runs:
 own - the deploy's second half, and the `reset-demo` workflow's whole payload. Demo data is
 **ephemeral by design** (ADR-0012), and a reset is a **project expunge** rather than a selective
 delete: the super admin hard-deletes the demo `Project` compartment
-(`POST fhir/R4/Project/<id>/$expunge?everything=true`, polled until the project is really gone), then
-provisioning rebuilds it - fresh project, coordinator invite, client credentials - followed by
+(`POST fhir/R4/Project/<id>/$expunge?everything=true`, polled until the project is really gone) **and
+the demo coordinator's `User`** - a `User` is server-scoped, so it outlives the compartment and would
+keep the password it was first created with, silently ignoring the published one (#67); the super
+admin's own account is never touched. Provisioning then rebuilds everything - fresh project,
+coordinator invite, client credentials - followed by
 `medplum:seed` and `medplum:deploy-bots`. Because the project is recreated, the Access-link Bot gets
 a **new `ProjectMembership`**, so the `/webhook/<membership-id>` path changes; the patient bundle
 embeds that path at build time, so the reset rebuilds and re-ships it (the coordinator bundle is
@@ -375,7 +378,17 @@ expunge fail the run instead of shipping a non-deterministic demo.
 `npm run smoke:hosted` ([`scripts/smoke-hosted.ts`](../../scripts/smoke-hosted.ts)) is the
 deployment's behavioural seam - the gate at the end of both the deploy and the reset. Lightweight,
 **HTTP-level only** (no browser): over public HTTPS it asserts Medplum health on `api.`; `app.` and
-`forms.` serve their bundles (200 + `<title>` marker); the seeded PHQ-9 `Questionnaire` is queryable
-(client-credentials read); and an Access-link `open` round-trips through `forms./webhook/*` (a bogus
-token yields the Bot's own `{ status: "not-found" }`, proving the same-origin proxy reaches the Bot).
-It exits non-zero on any failure. Deploys are reached only over IAP - there is no public SSH.
+`forms.` serve their bundles (200 + `<title>` marker) **and those bundles carry the demo banner**;
+the seeded PHQ-9 `Questionnaire` is queryable (client-credentials read); the **served** patient
+bundle's `/webhook/<id>` is the deployed Bot's; and an Access-link `open` round-trips through that
+same path (a bogus token yields the Bot's own `{ status: "not-found" }`, proving the same-origin
+proxy reaches the Bot). It exits non-zero on any failure. Deploys are reached only over IAP - there
+is no public SSH.
+
+The checks deliberately read what is **served** rather than what was built, because the two can
+diverge: `REMOTE_DIR` is relative to `~` and OS Login gives every identity its own home on the VM, so
+a reset run from a laptop ships into a different directory than the one Caddy mounts for the
+pipeline's service account. The ship reports success and the site keeps serving the previous bundle -
+with a `/webhook/<id>` from a project that no longer exists, so every patient link 404s while every
+server-side check still passes. **Run resets through the `reset-demo` workflow**, not by hand, unless
+you also ran the last full deploy from the same machine.

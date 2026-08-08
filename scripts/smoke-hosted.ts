@@ -96,10 +96,34 @@ async function main(): Promise<void> {
 
   results.push(
     await check(
+      "the SERVED patient bundle's webhook path is the deployed Bot's",
+      async () => {
+        const served = await servedWebhookPath(hosts.patientHost);
+        const live = await discoverWebhookPath(medplum);
+        // The reset recreates the project, so the Bot's ProjectMembership - and
+        // with it the `/webhook/<id>` the patient bundle hard-codes at build
+        // time - changes on every run. If the rebuilt bundle did not actually
+        // reach the front door, the site keeps serving a path that 404s and
+        // every patient link is dead, while every other check here still passes
+        // (they reach Medplum directly rather than through the bundle). Compare
+        // what is really being served.
+        if (served !== live) {
+          throw new Error(
+            `served bundle points at ${served} but the deployed Bot is at ${live} - ` +
+              "the patient bundle on the VM is stale"
+          );
+        }
+      }
+    )
+  );
+
+  results.push(
+    await check(
       "Access-link open round-trips through forms./webhook/*",
       async () => {
-        const webhookPath =
-          process.env.WEBHOOK_PATH ?? (await discoverWebhookPath(medplum));
+        // Use the path the SERVED bundle carries - that is the request a real
+        // patient's browser makes.
+        const webhookPath = await servedWebhookPath(hosts.patientHost);
         const url = `https://${hosts.patientHost}${webhookPath}`;
         const res = await fetch(url, {
           method: "POST",
@@ -218,6 +242,27 @@ async function clientLogin(baseUrl: string): Promise<MedplumClient> {
   const medplum = new MedplumClient({ baseUrl });
   await medplum.startClientLogin(clientId, clientSecret);
   return medplum;
+}
+
+/**
+ * The `/webhook/<membership-id>` the **served** patient bundle will call. Vite
+ * inlines `VITE_ACCESS_LINK_WEBHOOK_URL` at build time, so it is a literal in the
+ * shipped JS - reading it back is how we check what the deployment actually
+ * tells browsers to do, rather than what we believe we deployed.
+ */
+async function servedWebhookPath(host: string): Promise<string> {
+  const html = await (await fetch(`https://${host}/`)).text();
+  const scripts = [...html.matchAll(/(?:src|href)="([^"]+\.js)"/g)].flatMap(
+    (m) => (m[1] ? [m[1]] : [])
+  );
+  for (const src of scripts) {
+    const js = await (await fetch(new URL(src, `https://${host}/`))).text();
+    const path = /\/webhook\/[0-9a-f-]{36}/.exec(js)?.[0];
+    if (path) {
+      return path;
+    }
+  }
+  throw new Error(`no /webhook/<id> found in the bundle served by ${host}`);
 }
 
 /** Resolve the public webhook path from the deployed Access-link Bot's membership. */

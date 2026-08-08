@@ -230,6 +230,14 @@ export function readWebhookPath(): string {
  * a running Caddy's mount (it would serve an empty, deleted inode). So clear the
  * contents (`find -delete`, dotfiles included) and extract into the same dir; the
  * live mount then reflects the new bundle with no container restart.
+ *
+ * `REMOTE_DIR` is relative to `~`, and OS Login gives **each identity its own
+ * home**: the pipeline's service account and a developer's own account are
+ * different users on the VM. So a bundle shipped by one identity is invisible to
+ * a stack Caddy mounted for the other - the ship succeeds and serves nothing.
+ * Run resets from the same identity that ran the last full deploy (in practice:
+ * the `reset-demo` workflow, not a laptop). `smoke-hosted.ts` checks the SERVED
+ * bundle rather than trusting the ship, which is what makes this loud.
  */
 export function shipBundle(app: string, distDir: string): void {
   const tarball = resolve(REPO_ROOT, `infra/gcp/.${app}.tgz`);
